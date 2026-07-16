@@ -133,7 +133,7 @@ export default function StageScreen({ navigation }) {
         )}
       </View>
 
-      <ImageBackground source={require('../../assets/stage.png')} style={styles.stage} resizeMode="cover">
+      <ImageBackground source={require('../../assets/stage.png')} style={styles.stage} resizeMode="contain">
         {/* 発表中/カウントダウンに関わらず常時表示。コメント購読自体は元々常時動いている */}
         <FloatingComments comments={comments} />
         {isLive && <NicePanel points={niceCount} />}
