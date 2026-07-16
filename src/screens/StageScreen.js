@@ -121,7 +121,7 @@ export default function StageScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, Platform.OS === 'web' && styles.headerWebSafeArea]}>
         <View>
           <Text style={styles.title}>愚痴HERO</Text>
           <Text style={styles.subtitle}>愚痴披露ステージ</Text>
@@ -197,11 +197,13 @@ export default function StageScreen({ navigation }) {
 const styles = StyleSheet.create({
   container:     { flex: 1, backgroundColor: '#0f0f0f' },
   header:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, backgroundColor: '#1a1a1a', borderBottomWidth: 0.5, borderBottomColor: '#333' },
+  // Web版：スマホのステータスバー（時刻・電波等）とヘッダーが重ならないよう安全領域分を追加
+  headerWebSafeArea: { paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' },
   title:         { fontSize: 16, fontWeight: '500', color: '#fff' },
   subtitle:      { fontSize: 11, color: '#888', marginTop: 2 },
   badge:         { backgroundColor: 'rgba(186,117,23,0.2)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   badgeText:     { fontSize: 11, color: '#fac775' },
-  stage:         { flex: 1, minHeight: 220, position: 'relative', overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  stage:         { aspectRatio: 0.95, width: '100%', position: 'relative', overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   stageCenter:   { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', zIndex: 5 },
   countNum:      { fontSize: 88, fontWeight: '700', color: '#fff' },
   hiroText:      { fontSize: 52, fontWeight: '700', color: '#fac775' },
