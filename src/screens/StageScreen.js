@@ -133,7 +133,7 @@ export default function StageScreen({ navigation }) {
         )}
       </View>
 
-      <ImageBackground source={require('../../assets/stage.png')} style={styles.stage} resizeMode="contain">
+      <ImageBackground source={require('../../assets/stage.png')} style={styles.stage} resizeMode="cover">
         {/* 発表中/カウントダウンに関わらず常時表示。コメント購読自体は元々常時動いている */}
         <FloatingComments comments={comments} />
         {isLive && <NicePanel points={niceCount} />}
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
   subtitle:      { fontSize: 11, color: '#888', marginTop: 2 },
   badge:         { backgroundColor: 'rgba(186,117,23,0.2)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   badgeText:     { fontSize: 11, color: '#fac775' },
-  stage:         { flex: 1, minHeight: 220, maxHeight: 420, position: 'relative', overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0a0a0a' },
+  stage:         { width: '100%', maxWidth: 900, alignSelf: 'center', aspectRatio: 1536 / 1024, position: 'relative', overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0a0a0a' },
   stageCenter:   { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', zIndex: 5 },
   countNum:      { fontSize: 88, fontWeight: '700', color: '#fff' },
   hiroText:      { fontSize: 52, fontWeight: '700', color: '#fac775' },
