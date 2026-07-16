@@ -1,6 +1,6 @@
 // src/components/QuickComments.js
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
+import { useState } from 'react';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 const QUICK = ['👏 拍手', '共感', 'かなしい', 'がんばれ', 'すごい'];
 
@@ -11,6 +11,11 @@ export default function QuickComments({ onSend }) {
     if (!msg.trim()) return;
     onSend(msg.trim());
     setText('');
+  };
+
+  // 改行文字が紛れ込んだ場合（貼り付け等）は空白に置き換えて除去
+  const handleChangeText = (t) => {
+    setText(t.replace(/[\r\n]+/g, ' '));
   };
 
   return (
@@ -29,12 +34,13 @@ export default function QuickComments({ onSend }) {
         <TextInput
           style={styles.input}
           value={text}
-          onChangeText={setText}
+          onChangeText={handleChangeText}
           placeholder="コメントを入力..."
           placeholderTextColor="#555"
           returnKeyType="send"
           onSubmitEditing={() => handleSend(text)}
           maxLength={40}
+          multiline={false}
         />
         <TouchableOpacity style={styles.sendBtn} onPress={() => handleSend(text)} activeOpacity={0.8}>
           <Text style={styles.sendText}>送信</Text>

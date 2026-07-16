@@ -1,7 +1,7 @@
 // src/screens/WaitingScreen.js
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native';
-import { subscribeStage, leaveQueue } from '../services/firebase';
+import { useEffect, useState } from 'react';
+import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { leaveQueue, subscribeStage } from '../services/firebase';
 import { getGhostViewerCount } from '../services/ghostAudience';
 
 export default function WaitingScreen({ route, navigation }) {
@@ -13,14 +13,15 @@ export default function WaitingScreen({ route, navigation }) {
     const unsub = subscribeStage((s) => {
       setStage(s);
       if (s?.viewerCount > 0) setViewerCount(s.viewerCount);
-
-      // 自分の番になったらカウントダウンへ
       if (s?.currentSpeaker?.id === uid) {
-        navigation.replace('Countdown', { heroName, voiceType, uid });
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'StageTab' }],
+        });
       }
     });
-    return unsub;
-  }, [uid]);
+    return () => unsub();
+  }, []);
 
   const handleLeave = async () => {
     await leaveQueue(uid);
@@ -38,7 +39,6 @@ export default function WaitingScreen({ route, navigation }) {
         <Text style={styles.subtitle}>次のステージまでお待ちください</Text>
       </View>
 
-      {/* 幕間ステージ */}
       <View style={styles.stage}>
         <View style={styles.curtainLeft} />
         <View style={styles.curtainRight} />
@@ -46,7 +46,6 @@ export default function WaitingScreen({ route, navigation }) {
         <Text style={styles.stageLabel}>幕間</Text>
       </View>
 
-      {/* 広告エリア（AdMob設定後に差し替え） */}
       <View style={styles.adPlaceholder}>
         <Text style={styles.adText}>AD</Text>
       </View>

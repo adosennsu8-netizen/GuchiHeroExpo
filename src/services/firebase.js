@@ -25,13 +25,30 @@ export const subscribeStage = (callback) => {
   return onValue(stageRef, (snap) => callback(snap.val()));
 };
 
+// コメントは10分以上経過したらDBから削除（壁書きと同様、クライアント側で掃除する方式）
+const COMMENT_EXPIRE_MS = 10 * 60 * 1000;
+
 export const subscribeComments = (callback) => {
   const commentsRef = ref(db, 'comments');
+  // 購読開始より前のコメントは表示しない（リロード時に過去分が一斉に流れるのを防ぐ）
+  const startTime = Date.now();
   return onValue(commentsRef, (snap) => {
     const data = snap.val();
     if (!data) return callback([]);
-    const list = Object.values(data).sort((a, b) => a.createdAt - b.createdAt).slice(-50);
+
+    const now = Date.now();
+    const list = Object.values(data)
+      .filter((c) => c.createdAt >= startTime)
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .slice(-50);
     callback(list);
+
+    // 古いコメントをDBから削除
+    Object.entries(data).forEach(([id, v]) => {
+      if (now - v.createdAt >= COMMENT_EXPIRE_MS) {
+        remove(ref(db, `comments/${id}`));
+      }
+    });
   });
 };
 

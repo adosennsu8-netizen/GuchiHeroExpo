@@ -23,7 +23,8 @@ const SPRAY_COLORS = [
 ];
 
 const getRandomColor = () => SPRAY_COLORS[Math.floor(Math.random() * SPRAY_COLORS.length)];
-const getRandomAngle = () => (Math.random() - 0.5) * 8;
+// Web版のgap未対応環境でも重なりが目立たないよう、傾きをやや控えめに（±3度）
+const getRandomAngle = () => (Math.random() - 0.5) * 6;
 
 export default function WallScreen({ navigation }) {
   const [posts, setPosts] = useState([]);
@@ -164,8 +165,10 @@ const styles = StyleSheet.create({
   title:           { fontSize: 20, fontWeight: '700', color: '#fff', letterSpacing: 2 },
   subtitle:        { fontSize: 11, color: '#888', marginTop: 2 },
   list:            { flex: 1 },
-  listContent:     { padding: 14, gap: 12 },
-  post:            { backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 4, padding: 12, borderLeftWidth: 2, borderLeftColor: 'rgba(255,255,255,0.2)' },
+  // gapはWeb環境で効かない場合があるため、間隔はpost側のmarginBottomで確実に確保する
+  listContent:     { padding: 14, paddingBottom: 24 },
+  // gap指定を廃止し、marginBottomで各投稿間の間隔をどの環境でも確実に効かせる
+  post:            { backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 4, padding: 12, borderLeftWidth: 2, borderLeftColor: 'rgba(255,255,255,0.2)', marginBottom: 20 },
   postText:        { fontSize: 15, fontWeight: '700', lineHeight: 22, fontStyle: 'italic' },
   expire:          { fontSize: 10, color: '#555', marginTop: 6 },
   empty:           { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 },

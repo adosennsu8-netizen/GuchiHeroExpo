@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "602629666937",
+    "firebase_url": "https://guchihero-ea8f7-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "guchihero-ea8f7",
+    "storage_bucket": "guchihero-ea8f7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:602629666937:android:ebdce4cff91c6b39f27ca8",
+        "android_client_info": {
+          "package_name": "com.kouhei8.GuchiHeroExpo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC_ajZa_LUrX_NoB9gNJhbkBfhY3fYHvps"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
