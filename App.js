@@ -74,6 +74,26 @@ function injectWebHeightFix() {
     viewportMeta.content = 'width=device-width, initial-scale=1, viewport-fit=cover';
     document.head.appendChild(viewportMeta);
   }
+
+  // PWA化：ホーム画面に追加できるようmanifestとテーマカラーを登録
+  if (!document.querySelector('link[rel="manifest"]')) {
+    const manifestLink = document.createElement('link');
+    manifestLink.rel = 'manifest';
+    manifestLink.href = '/manifest.json';
+    document.head.appendChild(manifestLink);
+  }
+  if (!document.querySelector('meta[name="theme-color"]')) {
+    const themeColorMeta = document.createElement('meta');
+    themeColorMeta.name = 'theme-color';
+    themeColorMeta.content = '#1a1a1a';
+    document.head.appendChild(themeColorMeta);
+  }
+  if (!document.querySelector('link[rel="apple-touch-icon"]')) {
+    const appleTouchIcon = document.createElement('link');
+    appleTouchIcon.rel = 'apple-touch-icon';
+    appleTouchIcon.href = '/icons/icon-512.png';
+    document.head.appendChild(appleTouchIcon);
+  }
 }
 
 async function registerForPushNotifications() {
