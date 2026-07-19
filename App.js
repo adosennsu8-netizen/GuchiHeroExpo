@@ -113,6 +113,13 @@ export default function App() {
             backgroundColor: '#1a1a1a',
             borderTopWidth: 0.5,
             borderTopColor: '#333',
+            // Web版：スマホのホームバー等とタブ文字が重ならないよう下部に安全領域分の余白を追加
+            ...(Platform.OS === 'web'
+              ? {
+                  paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+                  height: 'calc(50px + env(safe-area-inset-bottom, 0px))',
+                }
+              : {}),
           },
           tabBarActiveTintColor: '#6b1a2a',
           tabBarInactiveTintColor: '#888',
