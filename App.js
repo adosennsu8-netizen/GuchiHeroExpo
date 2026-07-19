@@ -40,6 +40,7 @@ function injectWebHeightFix() {
   style.innerHTML = `
     html, body, #root {
       height: 100%;
+      height: 100dvh;
       margin: 0;
       padding: 0;
     }
@@ -131,10 +132,8 @@ export default function App() {
           },
           tabBarActiveTintColor: '#6b1a2a',
           tabBarInactiveTintColor: '#888',
-          tabBarLabelStyle: {
-            fontSize: 11,
-            ...(Platform.OS === 'web' ? { marginBottom: 6 } : {}),
-          },
+          tabBarLabelStyle: { fontSize: Platform.OS === 'web' ? 9 : 11 },
+          tabBarIconStyle: Platform.OS === 'web' ? { marginTop: -2 } : undefined,
         }}
       >
         <Tab.Screen
@@ -142,7 +141,7 @@ export default function App() {
           component={StageStack}
           options={{
             tabBarLabel: 'ステージ',
-            tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>🎭</Text>,
+            tabBarIcon: ({ color }) => <Text style={{ fontSize: Platform.OS === 'web' ? 15 : 20, color }}>🎭</Text>,
           }}
         />
         <Tab.Screen
@@ -150,7 +149,7 @@ export default function App() {
           component={WallScreen}
           options={{
             tabBarLabel: '壁書き',
-            tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>✍️</Text>,
+            tabBarIcon: ({ color }) => <Text style={{ fontSize: Platform.OS === 'web' ? 15 : 20, color }}>✍️</Text>,
           }}
         />
         <Tab.Screen
@@ -158,7 +157,7 @@ export default function App() {
           component={SettingsScreen}
           options={{
             tabBarLabel: '設定',
-            tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>⚙️</Text>,
+            tabBarIcon: ({ color }) => <Text style={{ fontSize: Platform.OS === 'web' ? 15 : 20, color }}>⚙️</Text>,
           }}
         />
       </Tab.Navigator>
