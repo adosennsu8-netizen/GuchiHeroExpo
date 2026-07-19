@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import {
   Alert,
   FlatList,
+  Image,
   ImageBackground,
   KeyboardAvoidingView,
   Platform,
@@ -25,6 +26,24 @@ const SPRAY_COLORS = [
 const getRandomColor = () => SPRAY_COLORS[Math.floor(Math.random() * SPRAY_COLORS.length)];
 // Web版のgap未対応環境でも重なりが目立たないよう、傾きをやや控えめに（±3度）
 const getRandomAngle = () => (Math.random() - 0.5) * 6;
+
+const wallImageSource = require('../../assets/wall.png');
+// Web版：ImageBackgroundのresizeMode="cover"が中央基準にならない問題への対処（ステージ画面と同様）
+function resolveWallImageUriWeb() {
+  if (Platform.OS !== 'web') return null;
+  try {
+    if (typeof wallImageSource === 'string') return wallImageSource;
+    if (wallImageSource && typeof wallImageSource === 'object' && wallImageSource.uri) {
+      return wallImageSource.uri;
+    }
+    const resolved = Image.resolveAssetSource(wallImageSource);
+    return resolved?.uri || null;
+  } catch (e) {
+    console.warn('wall.png のURI解決に失敗しました', e);
+    return null;
+  }
+}
+const wallImageUriWeb = resolveWallImageUriWeb();
 
 export default function WallScreen({ navigation }) {
   const [posts, setPosts] = useState([]);
@@ -87,6 +106,62 @@ export default function WallScreen({ navigation }) {
     return `${mins}分後に消える`;
   };
 
+  const wallContent = (
+    <>
+      <View style={styles.overlay} />
+
+      <View style={styles.header}>
+        <Text style={styles.title}>壁書き</Text>
+        <Text style={styles.subtitle}>30分で消える • 匿名</Text>
+      </View>
+
+      <FlatList
+        data={posts}
+        keyExtractor={item => item.id}
+        style={styles.list}
+        contentContainerStyle={styles.listContent}
+        renderItem={({ item }) => (
+          <TouchableOpacity onLongPress={handleLongPress} activeOpacity={0.8}>
+            <View style={[styles.post, { transform: [{ rotate: `${item.angle}deg` }] }]}>
+              <Text style={[styles.postText, { color: item.color }]}>{item.text}</Text>
+              <Text style={styles.expire}>{remainingTime(item.createdAt)}</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={styles.emptyText}>誰も書いていない{'\n'}最初に壁に刻め</Text>
+          </View>
+        }
+      />
+
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.inputWrap}
+      >
+        <View style={styles.inputRow}>
+          <TextInput
+            style={styles.input}
+            value={text}
+            onChangeText={setText}
+            placeholder="壁に刻め..."
+            placeholderTextColor="#666"
+            multiline
+            maxLength={140}
+          />
+          <TouchableOpacity
+            style={[styles.postBtn, (!text.trim() || posting) && styles.postBtnDisabled]}
+            onPress={handlePost}
+            disabled={!text.trim() || posting}
+          >
+            <Text style={styles.postBtnText}>書く</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.charCount}>{text.length}/140</Text>
+      </KeyboardAvoidingView>
+    </>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       <StagePopup
@@ -96,63 +171,25 @@ export default function WallScreen({ navigation }) {
           navigation.getParent()?.navigate('StageTab');
         }}
       />
-      <ImageBackground
-        source={require('../../assets/wall.png')}
-        style={styles.bg}
-        resizeMode="cover"
-      >
-        <View style={styles.overlay} />
-
-        <View style={styles.header}>
-          <Text style={styles.title}>壁書き</Text>
-          <Text style={styles.subtitle}>30分で消える • 匿名</Text>
-        </View>
-
-        <FlatList
-          data={posts}
-          keyExtractor={item => item.id}
-          style={styles.list}
-          contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
-            <TouchableOpacity onLongPress={handleLongPress} activeOpacity={0.8}>
-              <View style={[styles.post, { transform: [{ rotate: `${item.angle}deg` }] }]}>
-                <Text style={[styles.postText, { color: item.color }]}>{item.text}</Text>
-                <Text style={styles.expire}>{remainingTime(item.createdAt)}</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>誰も書いていない{'\n'}最初に壁に刻め</Text>
-            </View>
-          }
-        />
-
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.inputWrap}
+      {Platform.OS === 'web' && wallImageUriWeb ? (
+        <View
+          style={[
+            styles.bg,
+            {
+              backgroundImage: `url(${wallImageUriWeb})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center center',
+              backgroundRepeat: 'no-repeat',
+            },
+          ]}
         >
-          <View style={styles.inputRow}>
-            <TextInput
-              style={styles.input}
-              value={text}
-              onChangeText={setText}
-              placeholder="壁に刻め..."
-              placeholderTextColor="#666"
-              multiline
-              maxLength={140}
-            />
-            <TouchableOpacity
-              style={[styles.postBtn, (!text.trim() || posting) && styles.postBtnDisabled]}
-              onPress={handlePost}
-              disabled={!text.trim() || posting}
-            >
-              <Text style={styles.postBtnText}>書く</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.charCount}>{text.length}/140</Text>
-        </KeyboardAvoidingView>
-      </ImageBackground>
+          {wallContent}
+        </View>
+      ) : (
+        <ImageBackground source={wallImageSource} style={styles.bg} resizeMode="cover">
+          {wallContent}
+        </ImageBackground>
+      )}
     </SafeAreaView>
   );
 }
