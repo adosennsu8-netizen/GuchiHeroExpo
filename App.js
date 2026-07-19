@@ -49,6 +49,15 @@ function injectWebHeightFix() {
     }
   `;
   document.head.appendChild(style);
+
+  // Chromeの自動翻訳がボタン文言等を誤訳するのを防ぐ
+  document.documentElement.setAttribute('translate', 'no');
+  if (!document.querySelector('meta[name="google"]')) {
+    const meta = document.createElement('meta');
+    meta.name = 'google';
+    meta.content = 'notranslate';
+    document.head.appendChild(meta);
+  }
 }
 
 async function registerForPushNotifications() {

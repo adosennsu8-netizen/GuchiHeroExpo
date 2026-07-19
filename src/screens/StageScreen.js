@@ -133,7 +133,12 @@ export default function StageScreen({ navigation }) {
         )}
       </View>
 
-      <ImageBackground source={require('../../assets/stage.png')} style={styles.stage} resizeMode="cover">
+      <ImageBackground
+        source={require('../../assets/stage.png')}
+        style={styles.stage}
+        resizeMode="cover"
+        imageStyle={Platform.OS === 'web' ? styles.stageImageWeb : undefined}
+      >
         {/* 発表中/カウントダウンに関わらず常時表示。コメント購読自体は元々常時動いている */}
         <FloatingComments comments={comments} />
         {isLive && <NicePanel points={niceCount} />}
@@ -204,6 +209,8 @@ const styles = StyleSheet.create({
   badge:         { backgroundColor: 'rgba(186,117,23,0.2)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   badgeText:     { fontSize: 11, color: '#fac775' },
   stage:         { flex: 1, minHeight: 220, position: 'relative', overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  // Web版：resizeMode="cover"がデフォルトで左上基準に切り取られてしまうため、中央基準に矯正
+  stageImageWeb: { objectFit: 'cover', objectPosition: 'center center' },
   stageCenter:   { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', zIndex: 5 },
   countNum:      { fontSize: 88, fontWeight: '700', color: '#fff' },
   hiroText:      { fontSize: 52, fontWeight: '700', color: '#fac775' },
