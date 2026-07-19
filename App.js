@@ -116,8 +116,8 @@ export default function App() {
             // Web版：スマホのホームバー等とタブ文字が重ならないよう下部に安全領域分の余白を追加
             ...(Platform.OS === 'web'
               ? {
-                  paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-                  height: 'calc(50px + env(safe-area-inset-bottom, 0px))',
+                  paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)',
+                  height: 'calc(64px + env(safe-area-inset-bottom, 0px))',
                 }
               : {}),
           },
