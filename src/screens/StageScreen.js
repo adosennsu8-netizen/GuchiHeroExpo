@@ -22,8 +22,23 @@ import { getGhostViewerCount, startGhostComments } from '../services/ghostAudien
 const stageImageSource = require('../../assets/stage.png');
 // Web版：ImageBackgroundのresizeMode="cover"がRN Web上では中央基準にならず
 // 左上基準で切り取られてしまう挙動があったため、Web版だけは素のCSS背景画像として描画し、
-// background-position:centerを直接効かせる
-const stageImageUriWeb = Platform.OS === 'web' ? Image.resolveAssetSource(stageImageSource).uri : null;
+// background-position:centerを直接効かせる。
+// requireの戻り値がWeb環境では文字列そのもののことがあるため、型を確認しつつ安全に取得する
+function resolveStageImageUriWeb() {
+  if (Platform.OS !== 'web') return null;
+  try {
+    if (typeof stageImageSource === 'string') return stageImageSource;
+    if (stageImageSource && typeof stageImageSource === 'object' && stageImageSource.uri) {
+      return stageImageSource.uri;
+    }
+    const resolved = Image.resolveAssetSource(stageImageSource);
+    return resolved?.uri || null;
+  } catch (e) {
+    console.warn('stage.png のURI解決に失敗しました', e);
+    return null;
+  }
+}
+const stageImageUriWeb = resolveStageImageUriWeb();
 
 export default function StageScreen({ navigation }) {
   const [stageStatus, setStageStatus] = useState('idle');
@@ -140,7 +155,7 @@ export default function StageScreen({ navigation }) {
         )}
       </View>
 
-      {Platform.OS === 'web' ? (
+      {Platform.OS === 'web' && stageImageUriWeb ? (
         <View
           style={[
             styles.stage,
