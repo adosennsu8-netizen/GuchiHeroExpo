@@ -268,7 +268,7 @@ const styles = StyleSheet.create({
   audienceLabel: { fontSize: 11, color: '#888' },
   audienceCount: { fontSize: 13, fontWeight: '500', color: '#fff' },
   speakerName:   { fontSize: 11, color: '#888', marginLeft: 'auto' },
-  actionArea:    { padding: 14, gap: 10 },
+  actionArea:    { padding: 14, paddingBottom: 8, gap: 8 },
   queueBox:      { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 8, padding: 10, gap: 8 },
   queueDot:      { width: 8, height: 8, borderRadius: 4, backgroundColor: '#e24b4a' },
   queueText:     { fontSize: 12, color: '#aaa', flex: 1 },

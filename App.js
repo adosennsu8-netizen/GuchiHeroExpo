@@ -128,6 +128,7 @@ export default function App() {
             backgroundColor: '#1a1a1a',
             borderTopWidth: 0.5,
             borderTopColor: '#333',
+            ...(Platform.OS === 'web' ? { paddingBottom: 10 } : {}),
           },
           tabBarActiveTintColor: '#6b1a2a',
           tabBarInactiveTintColor: '#888',
