@@ -58,6 +58,21 @@ function injectWebHeightFix() {
     meta.content = 'notranslate';
     document.head.appendChild(meta);
   }
+
+  // 安全領域(ホームバー等)の自動検出を有効にする。
+  // これが無いと env(safe-area-inset-bottom) 等が常に0扱いになり、
+  // React Navigationのタブバーが持つ安全領域の自動回避が機能しない
+  const existingViewport = document.querySelector('meta[name="viewport"]');
+  if (existingViewport) {
+    if (!existingViewport.content.includes('viewport-fit=cover')) {
+      existingViewport.content = `${existingViewport.content}, viewport-fit=cover`;
+    }
+  } else {
+    const viewportMeta = document.createElement('meta');
+    viewportMeta.name = 'viewport';
+    viewportMeta.content = 'width=device-width, initial-scale=1, viewport-fit=cover';
+    document.head.appendChild(viewportMeta);
+  }
 }
 
 async function registerForPushNotifications() {
@@ -113,15 +128,6 @@ export default function App() {
             backgroundColor: '#1a1a1a',
             borderTopWidth: 0.5,
             borderTopColor: '#333',
-            // Web版：calc()/env()がReact Navigationのスタイル指定内で正しく解釈されなかったため、
-            // 確実に効く固定値で余裕を持たせる
-            ...(Platform.OS === 'web'
-              ? {
-                  paddingBottom: 24,
-                  paddingTop: 8,
-                  height: 78,
-                }
-              : {}),
           },
           tabBarActiveTintColor: '#6b1a2a',
           tabBarInactiveTintColor: '#888',
