@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
+  Image,
   ImageBackground,
   KeyboardAvoidingView,
   Platform,
@@ -17,6 +18,12 @@ import NicePanel from '../components/NicePanel';
 import QuickComments from '../components/QuickComments';
 import { generateHeroName, sendComment, sendNice, subscribeComments, subscribeStage } from '../services/firebase';
 import { getGhostViewerCount, startGhostComments } from '../services/ghostAudience';
+
+const stageImageSource = require('../../assets/stage.png');
+// Web版：ImageBackgroundのresizeMode="cover"がRN Web上では中央基準にならず
+// 左上基準で切り取られてしまう挙動があったため、Web版だけは素のCSS背景画像として描画し、
+// background-position:centerを直接効かせる
+const stageImageUriWeb = Platform.OS === 'web' ? Image.resolveAssetSource(stageImageSource).uri : null;
 
 export default function StageScreen({ navigation }) {
   const [stageStatus, setStageStatus] = useState('idle');
@@ -133,30 +140,57 @@ export default function StageScreen({ navigation }) {
         )}
       </View>
 
-      <ImageBackground
-        source={require('../../assets/stage.png')}
-        style={styles.stage}
-        resizeMode="cover"
-        imageStyle={Platform.OS === 'web' ? styles.stageImageWeb : undefined}
-      >
-        {/* 発表中/カウントダウンに関わらず常時表示。コメント購読自体は元々常時動いている */}
-        <FloatingComments comments={comments} />
-        {isLive && <NicePanel points={niceCount} />}
-        <View style={styles.stageCenter}>
-          {isCountdown && !showHiro && (
-            <Animated.Text style={[styles.countNum, { transform: [{ scale: countScale }] }]}>
-              {countNum}
-            </Animated.Text>
-          )}
-          {isCountdown && showHiro && <Text style={styles.hiroText}>披露</Text>}
-          {isLive && (
-            <Text style={[styles.liveTimer, remaining <= 10 && styles.liveTimerRed]}>
-              {remaining}
-            </Text>
-          )}
-          {isEnd && <Text style={styles.endText}>終了</Text>}
+      {Platform.OS === 'web' ? (
+        <View
+          style={[
+            styles.stage,
+            {
+              backgroundImage: `url(${stageImageUriWeb})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center center',
+              backgroundRepeat: 'no-repeat',
+            },
+          ]}
+        >
+          {/* 発表中/カウントダウンに関わらず常時表示。コメント購読自体は元々常時動いている */}
+          <FloatingComments comments={comments} />
+          {isLive && <NicePanel points={niceCount} />}
+          <View style={styles.stageCenter}>
+            {isCountdown && !showHiro && (
+              <Animated.Text style={[styles.countNum, { transform: [{ scale: countScale }] }]}>
+                {countNum}
+              </Animated.Text>
+            )}
+            {isCountdown && showHiro && <Text style={styles.hiroText}>披露</Text>}
+            {isLive && (
+              <Text style={[styles.liveTimer, remaining <= 10 && styles.liveTimerRed]}>
+                {remaining}
+              </Text>
+            )}
+            {isEnd && <Text style={styles.endText}>終了</Text>}
+          </View>
         </View>
-      </ImageBackground>
+      ) : (
+        <ImageBackground source={stageImageSource} style={styles.stage} resizeMode="cover">
+          {/* 発表中/カウントダウンに関わらず常時表示。コメント購読自体は元々常時動いている */}
+          <FloatingComments comments={comments} />
+          {isLive && <NicePanel points={niceCount} />}
+          <View style={styles.stageCenter}>
+            {isCountdown && !showHiro && (
+              <Animated.Text style={[styles.countNum, { transform: [{ scale: countScale }] }]}>
+                {countNum}
+              </Animated.Text>
+            )}
+            {isCountdown && showHiro && <Text style={styles.hiroText}>披露</Text>}
+            {isLive && (
+              <Text style={[styles.liveTimer, remaining <= 10 && styles.liveTimerRed]}>
+                {remaining}
+              </Text>
+            )}
+            {isEnd && <Text style={styles.endText}>終了</Text>}
+          </View>
+        </ImageBackground>
+      )}
 
       <View style={styles.audienceBar}>
         <Text style={styles.audienceLabel}>視聴中</Text>
@@ -209,8 +243,6 @@ const styles = StyleSheet.create({
   badge:         { backgroundColor: 'rgba(186,117,23,0.2)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   badgeText:     { fontSize: 11, color: '#fac775' },
   stage:         { flex: 1, minHeight: 220, position: 'relative', overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  // Web版：resizeMode="cover"がデフォルトで左上基準に切り取られてしまうため、中央基準に矯正
-  stageImageWeb: { objectFit: 'cover', objectPosition: 'center center' },
   stageCenter:   { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', zIndex: 5 },
   countNum:      { fontSize: 88, fontWeight: '700', color: '#fff' },
   hiroText:      { fontSize: 52, fontWeight: '700', color: '#fac775' },
