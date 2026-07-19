@@ -113,11 +113,13 @@ export default function App() {
             backgroundColor: '#1a1a1a',
             borderTopWidth: 0.5,
             borderTopColor: '#333',
-            // Web版：スマホのホームバー等とタブ文字が重ならないよう下部に安全領域分の余白を追加
+            // Web版：calc()/env()がReact Navigationのスタイル指定内で正しく解釈されなかったため、
+            // 確実に効く固定値で余裕を持たせる
             ...(Platform.OS === 'web'
               ? {
-                  paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)',
-                  height: 'calc(64px + env(safe-area-inset-bottom, 0px))',
+                  paddingBottom: 24,
+                  paddingTop: 8,
+                  height: 78,
                 }
               : {}),
           },
