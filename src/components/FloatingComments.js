@@ -2,8 +2,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 
-const LANES = 10;
-const LANE_H = 48;
+const LANES = 6;
+const LANE_H = 34;
 
 function FloatingComment({ text, lane, containerWidth }) {
   // コンテナの実測幅を基準に、右端の外側からスタートして左端の外側まで流れる
@@ -34,6 +34,41 @@ export default function FloatingComments({ comments }) {
   // 枠自体のonLayoutで実測して基準にする
   const [containerWidth, setContainerWidth] = useState(0);
 
+  // 各レーンが「いつ空くか」を記録しておき、連打された時に埋まっているレーンへ
+  // 重ねて表示してしまわないよう、その時点で一番早く空くレーンへ割り当てる
+  const laneFreeAtRef = useRef(new Array(LANES).fill(0));
+  const laneAssignmentRef = useRef(new Map()); // コメントのkey -> 割り当てたレーン番号
+
+  const visibleComments = comments.slice(-20);
+
+  visibleComments.forEach((c) => {
+    const key = `${c.createdAt}`;
+    if (laneAssignmentRef.current.has(key)) return;
+
+    const now = Date.now();
+    let bestLane = 0;
+    let bestFreeAt = Infinity;
+    for (let i = 0; i < LANES; i++) {
+      if (laneFreeAtRef.current[i] < bestFreeAt) {
+        bestFreeAt = laneFreeAtRef.current[i];
+        bestLane = i;
+      }
+    }
+
+    const charCount = c.text.length;
+    const duration = Math.max(7000, Math.min(14000, 5000 + charCount * 250));
+    laneAssignmentRef.current.set(key, bestLane);
+    laneFreeAtRef.current[bestLane] = now + duration;
+  });
+
+  // 画面から消えたコメントの割り当て情報は掃除しておく（メモリが増え続けないように）
+  useEffect(() => {
+    const validKeys = new Set(visibleComments.map((c) => `${c.createdAt}`));
+    for (const key of laneAssignmentRef.current.keys()) {
+      if (!validKeys.has(key)) laneAssignmentRef.current.delete(key);
+    }
+  });
+
   return (
     <View
       style={styles.container}
@@ -41,11 +76,11 @@ export default function FloatingComments({ comments }) {
       onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
     >
       {containerWidth > 0 &&
-        comments.slice(-20).map((c, i) => (
+        visibleComments.map((c) => (
           <FloatingComment
-            key={`${c.createdAt}-${i}`}
+            key={`${c.createdAt}`}
             text={c.text}
-            lane={i % LANES}
+            lane={laneAssignmentRef.current.get(`${c.createdAt}`)}
             containerWidth={containerWidth}
           />
         ))}
