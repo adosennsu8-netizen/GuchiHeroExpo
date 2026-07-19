@@ -110,21 +110,27 @@ export default function StageScreen({ navigation }) {
   }, [stageStatus]);
 
   useEffect(() => {
-    if (stageStatus !== 'live') return;
-    setRemaining(59);
-    const timer = setInterval(() => {
-      setRemaining(prev => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          setStageStatus('end');
-          setTimeout(() => setStageStatus('idle'), 2000);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    if (stageStatus !== 'live' || !currentSpeaker?.startedAt) return;
+    // countdownは4秒固定（Cloud Functions側の実装と合わせる）
+    // サーバーに記録された本当の発表開始時刻から、毎秒「本当の経過時間」を計算し直す。
+    // ローカルでただ数えるだけだと、通知の受信タイミングのズレや状態切り替えの
+    // 重なりで表示がズレる（早く終わる／59に巻き戻る等）ため、常に真の時刻から逆算する。
+    const liveStartedAt = currentSpeaker.startedAt + 4000;
+
+    const tick = () => {
+      const elapsed = Math.floor((Date.now() - liveStartedAt) / 1000);
+      const rem = Math.max(0, 59 - elapsed);
+      setRemaining(rem);
+      if (rem <= 0) {
+        setStageStatus('end');
+        setTimeout(() => setStageStatus('idle'), 2000);
+      }
+    };
+
+    tick();
+    const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
-  }, [stageStatus]);
+  }, [stageStatus, currentSpeaker?.startedAt]);
 
   const handleNice = async () => {
     if (nicedThisSession) return;
