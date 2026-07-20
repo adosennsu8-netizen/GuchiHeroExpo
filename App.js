@@ -122,6 +122,45 @@ async function registerForPushNotifications() {
   return token;
 }
 
+// Web版のプッシュ通知登録（iOSはホーム画面に追加していないと届かない点に注意）
+const WEB_VAPID_KEY =
+  'BMQYaP8b5Ghd6IUJO7A5W-NZZHswzSXyTCiQAAna2Rk6NLJ4J2xGrLZuWygN-l0FhjVcJEV0nMKMi4Zz-5wb3Yw';
+
+async function registerWebPush() {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return null;
+  if (typeof Notification === 'undefined') return null;
+
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') return null;
+
+    const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+
+    const { getMessaging, getToken } = await import('firebase/messaging');
+    const { app } = await import('./src/services/firebase');
+    const messaging = getMessaging(app);
+
+    const token = await getToken(messaging, {
+      vapidKey: WEB_VAPID_KEY,
+      serviceWorkerRegistration: registration,
+    });
+    if (!token) return null;
+
+    const db = getDatabase();
+    const sessionId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    await set(ref(db, `fcmTokens/${sessionId}`), {
+      token,
+      platform: 'web',
+      createdAt: Date.now(),
+    });
+
+    return token;
+  } catch (error) {
+    console.warn('Web Pushの登録に失敗しました', error);
+    return null;
+  }
+}
+
 function StageStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -136,7 +175,11 @@ function StageStack() {
 export default function App() {
   useEffect(() => {
     injectWebHeightFix();
-    registerForPushNotifications().catch(console.error);
+    if (Platform.OS === 'web') {
+      registerWebPush().catch(console.error);
+    } else {
+      registerForPushNotifications().catch(console.error);
+    }
   }, []);
 
   return (

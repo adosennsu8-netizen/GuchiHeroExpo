@@ -15,6 +15,9 @@ appId: "1:602629666937:web:ea821f8f9cbf276af27ca8"
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const db = getDatabase(app);
 
+// Web Push通知（App.js側）で、同じ初期化済みappを再利用するために公開する
+export { app };
+
 export const generateHeroName = () => {
   const num = Math.floor(1000 + Math.random() * 9000);
   return `匿名ヒーロー #${num}`;
