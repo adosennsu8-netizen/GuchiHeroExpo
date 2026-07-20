@@ -9,6 +9,9 @@ const REGION = "asia-southeast1";
 const COUNTDOWN_MS = 4000;
 const LIVE_MS = 60000;
 const INTERMISSION_MS = 15000;
+// 自分の番が来た時、タップして開始するまでの猶予時間。
+// この間に反応が無ければ「不在」とみなし、キューから外して次の人に回す。
+const CONFIRM_MS = 15000;
 
 // 全FCMトークンに通知を送る
 async function sendToAll(title, body) {
@@ -46,8 +49,28 @@ async function sendToToken(token, title, body) {
   }).catch(console.error);
 }
 
-// ① キューに変化があった時：アイドル中であればカウントダウンを開始する。
-// トランザクションで「idleである場合のみcountdownに書き換える」ことを保証するため、
+// 待機列の中から、指定したID以外で一番先頭の人を返す
+function getWaitingList(queue, excludeId) {
+  return Object.entries(queue || {})
+    .filter(([id]) => id !== excludeId)
+    .sort((a, b) => a[1].joinedAt - b[1].joinedAt);
+}
+
+// 誰かを「確認待ち」状態にする（まだ本番のカウントダウンは始めない）
+async function enterConfirming(db, uid, speaker) {
+  await db.ref("/stage").update({
+    status: "confirming",
+    currentSpeaker: {
+      id: uid,
+      heroName: speaker.heroName ?? "匿名ヒーロー",
+      confirmDeadline: Date.now() + CONFIRM_MS,
+    },
+    niceCount: 0,
+  });
+}
+
+// ① キューに変化があった時：アイドル中であれば「確認待ち」を開始する。
+// トランザクションで「idleである場合のみ書き換える」ことを保証するため、
 // 複数の実行が同時に発生しても二重にステージが始まることはない。
 exports.onQueueChange = onValueWritten(
   { ref: "/stage/queue", region: REGION, timeoutSeconds: 30 },
@@ -55,13 +78,14 @@ exports.onQueueChange = onValueWritten(
     const db = getDatabase();
 
     const statusResult = await db.ref("/stage/status").transaction((current) => {
-      if (current === "idle" || current === null) return "countdown";
+      if (current === "idle" || current === null) return "confirming";
       return; // idle以外の時は何もしない（他のフェーズが進行中）
     });
     console.log(
       "[onQueueChange] transaction committed:", statusResult.committed,
       " 現在値:", statusResult.snapshot.val()
     );
+
     if (!statusResult.committed) return;
 
     const queueSnap = await db.ref("/stage/queue").get();
@@ -70,7 +94,6 @@ exports.onQueueChange = onValueWritten(
     console.log("[onQueueChange] queueList件数:", queueList.length);
 
     if (queueList.length === 0) {
-      // 予約はしたが誰もいなかった場合は戻す
       await db.ref("/stage/status").set("idle");
       console.log("[onQueueChange] 誰もいなかったのでidleに戻した");
       return;
@@ -85,23 +108,70 @@ exports.onQueueChange = onValueWritten(
     }
 
     try {
-      await db.ref("/stage").update({
-        status: "countdown",
-        currentSpeaker: { id: uid, heroName: speaker.heroName ?? "匿名ヒーロー", startedAt: Date.now() },
-        niceCount: 0,
-      });
-      console.log("[onQueueChange] countdown開始。speaker:", speaker.heroName);
+      await enterConfirming(db, uid, speaker);
+      console.log("[onQueueChange] 確認待ち開始。speaker:", speaker.heroName);
     } catch (error) {
       console.error("[onQueueChange] currentSpeakerの書き込みでエラー:", error);
-      // 失敗した場合はidleに戻し、キューが詰まったままにならないようにする
       await db.ref("/stage/status").set("idle");
     }
   }
 );
 
+// ②' 確認待ちが始まった時：15秒以内にタップ（countdownへの切り替え）が
+// 無ければ「不在」とみなし、キューから外して次の人を確認待ちにする。
+// 次の人には「予告」ではなく「今すぐタップしてください」という即時通知を送る。
+exports.onConfirmingStart = onValueWritten(
+  { ref: "/stage/status", region: REGION, timeoutSeconds: 30 },
+  async (event) => {
+    if (event.data.after.val() !== "confirming") return;
+    console.log("[onConfirmingStart] fired");
+
+    const db = getDatabase();
+    const speakerSnap = await db.ref("/stage/currentSpeaker").get();
+    const speaker = speakerSnap.val();
+    if (!speaker?.confirmDeadline) return;
+
+    const waitMs = Math.max(0, speaker.confirmDeadline - Date.now());
+    console.log("[onConfirmingStart] waitMs:", waitMs);
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+
+    const currentSnap = await db.ref("/stage").get();
+    const current = currentSnap.val() || {};
+
+    // 待っている間にタップされて次のフェーズ（countdown）に進んでいれば何もしない
+    if (current.status !== "confirming" || current.currentSpeaker?.id !== speaker.id) {
+      console.log("[onConfirmingStart] 既に反応済み、または状況が変わっていたため終了");
+      return;
+    }
+
+    console.log("[onConfirmingStart] 反応が無かったためスキップ:", speaker.heroName);
+    await db.ref(`/stage/queue/${speaker.id}`).remove();
+
+    const nextQueue = (await db.ref("/stage/queue").get()).val() || {};
+    const nextList = getWaitingList(nextQueue, null);
+
+    if (nextList.length === 0) {
+      await db.ref("/stage").update({ status: "idle", currentSpeaker: null });
+      console.log("[onConfirmingStart] 次の人がいないのでidleへ");
+      return;
+    }
+
+    const [nextUid, nextSpeaker] = nextList[0];
+    await enterConfirming(db, nextUid, nextSpeaker);
+
+    // スキップによる繰り上がりは予告する時間が無いため、即時通知に切り替える
+    if (nextSpeaker.fcmToken) {
+      await sendToToken(
+        nextSpeaker.fcmToken,
+        "🎤 今、あなたの番です",
+        "15秒以内にアプリでタップして開始してください"
+      );
+    }
+  }
+);
+
 // ② カウントダウンが始まった時：実際の開始時刻から4秒後にliveへ切り替える。
-// この関数は「今countdownになった」という1回のイベントだけに反応するので、
-// 発表者が何人続いても、その都度独立して1回だけ実行される。
+// startedAtは、本人がアプリ上で「タップしてスタート」を押した瞬間にクライアント側で書き込まれる。
 exports.onCountdownStart = onValueWritten(
   { ref: "/stage/status", region: REGION, timeoutSeconds: 30 },
   async (event) => {
@@ -124,7 +194,6 @@ exports.onCountdownStart = onValueWritten(
     console.log("[onCountdownStart] waitMs:", waitMs);
     await new Promise((resolve) => setTimeout(resolve, waitMs));
 
-    // 待機中に状態が変わっていないか確認してから書き込む
     const currentStatus = (await db.ref("/stage/status").get()).val();
     console.log("[onCountdownStart] 待機後のstatus:", currentStatus);
     if (currentStatus !== "countdown") {
@@ -134,19 +203,6 @@ exports.onCountdownStart = onValueWritten(
 
     await db.ref("/stage/status").set("live");
     console.log("[onCountdownStart] liveへ切り替え完了");
-
-    // 待機列の次の人に通知
-    const currentQueue = (await db.ref("/stage/queue").get()).val() || {};
-    const waitingList = Object.entries(currentQueue)
-      .filter(([id]) => id !== speaker.id)
-      .sort((a, b) => a[1].joinedAt - b[1].joinedAt);
-
-    if (waitingList.length > 0) {
-      const [, nextSpeaker] = waitingList[0];
-      if (nextSpeaker.fcmToken) {
-        await sendToToken(nextSpeaker.fcmToken, "🎤 もうすぐあなたの番です", "60秒後にステージへ！準備してください");
-      }
-    }
   }
 );
 
@@ -165,7 +221,6 @@ exports.onLiveStart = onValueWritten(
     const waitMs = Math.max(0, liveStartedAt + LIVE_MS - Date.now());
     await new Promise((resolve) => setTimeout(resolve, waitMs));
 
-    // 待機中に状態が変わっていないか（既に別処理で進んでいないか）確認
     const currentSnap = await db.ref("/stage").get();
     const current = currentSnap.val() || {};
     if (current.status !== "live" || current.currentSpeaker?.id !== speaker.id) return;
@@ -177,7 +232,7 @@ exports.onLiveStart = onValueWritten(
 );
 
 // ④ intermission（終了後の幕間）が始まった時：15秒後に、次の人がいれば
-// カウントダウンを開始し、いなければidleに戻す。
+// 確認待ち状態にする（いきなり本番のカウントダウンは始めない）。
 exports.onIntermissionStart = onValueWritten(
   { ref: "/stage/status", region: REGION, timeoutSeconds: 30 },
   async (event) => {
@@ -206,15 +261,65 @@ exports.onIntermissionStart = onValueWritten(
     console.log("[onIntermissionStart] 次のspeaker:", JSON.stringify(nextSpeaker));
 
     try {
-      await db.ref("/stage").update({
-        status: "countdown",
-        currentSpeaker: { id: nextUid, heroName: nextSpeaker.heroName ?? "匿名ヒーロー", startedAt: Date.now() },
-        niceCount: 0,
-      });
-      console.log("[onIntermissionStart] 次のcountdown開始完了");
+      await enterConfirming(db, nextUid, nextSpeaker);
+      console.log("[onIntermissionStart] 確認待ち開始完了");
+
+      // 45秒前の予告に加えて、本当に自分の番になった今このタイミングでも念のため通知する
+      if (nextSpeaker.fcmToken) {
+        await sendToToken(
+          nextSpeaker.fcmToken,
+          "🎤 あなたの番です",
+          "15秒以内にアプリでタップして開始してください"
+        );
+      }
     } catch (error) {
       console.error("[onIntermissionStart] currentSpeakerの書き込みでエラー:", error);
       await db.ref("/stage/status").set("idle");
+    }
+  }
+);
+
+// ⑤ 次の人に、本当に自分の登壇が近づいたタイミング（おおよそ登壇45秒前）で予告通知する。
+// 「並んだ瞬間」に送っても、その時点ではまだアプリを開いているので意味がない。
+// 一旦アプリを離れた人を、必要なタイミングで呼び戻すための通知。
+// （確認待ちフェーズの長さは本人の反応速度次第で変わるため、最大の待ち時間で見積もった
+// 概算のタイミングになる。早めに届く分には問題ないため、これで十分。）
+exports.onNotifyNextSpeaker = onValueWritten(
+  { ref: "/stage/status", region: REGION, timeoutSeconds: 90 },
+  async (event) => {
+    if (event.data.after.val() !== "live") return;
+
+    const db = getDatabase();
+    const speakerSnap = await db.ref("/stage/currentSpeaker").get();
+    const speaker = speakerSnap.val();
+    if (!speaker?.startedAt) return;
+
+    const liveStartedAt = speaker.startedAt + COUNTDOWN_MS;
+    // 次の人の本当の登壇時刻（概算）
+    // = 今のliveの終わり + 幕間15秒 + 確認待ち最大15秒 + カウントダウン4秒
+    const nextLiveStart = liveStartedAt + LIVE_MS + INTERMISSION_MS + CONFIRM_MS + COUNTDOWN_MS;
+    const notifyAt = nextLiveStart - 45000;
+    const waitMs = Math.max(0, notifyAt - Date.now());
+    console.log("[onNotifyNextSpeaker] waitMs:", waitMs);
+
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+
+    const currentSnap = await db.ref("/stage").get();
+    const current = currentSnap.val() || {};
+    if (current.currentSpeaker?.id !== speaker.id) {
+      console.log("[onNotifyNextSpeaker] 状況が変わっていたため終了");
+      return;
+    }
+
+    const queue = current.queue || {};
+    const waitingList = getWaitingList(queue, speaker.id);
+
+    if (waitingList.length > 0) {
+      const [, nextSpeaker] = waitingList[0];
+      console.log("[onNotifyNextSpeaker] 通知対象:", nextSpeaker.heroName);
+      if (nextSpeaker.fcmToken) {
+        await sendToToken(nextSpeaker.fcmToken, "🎤 もうすぐあなたの番です", "まもなくステージへ上がります！");
+      }
     }
   }
 );

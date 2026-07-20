@@ -1,19 +1,28 @@
 // src/screens/WaitingScreen.js
 import { useEffect, useState } from 'react';
 import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { leaveQueue, subscribeStage } from '../services/firebase';
+import { confirmMyTurn, leaveQueue, subscribeStage } from '../services/firebase';
 import { getGhostViewerCount } from '../services/ghostAudience';
 
 export default function WaitingScreen({ route, navigation }) {
   const { heroName, voiceType, uid } = route.params;
   const [stage, setStage] = useState(null);
   const [viewerCount, setViewerCount] = useState(getGhostViewerCount());
+  const [confirmRemaining, setConfirmRemaining] = useState(null);
+
+  const isMyTurnToConfirm = stage?.status === 'confirming' && stage?.currentSpeaker?.id === uid;
 
   useEffect(() => {
     const unsub = subscribeStage((s) => {
       setStage(s);
       if (s?.viewerCount > 0) setViewerCount(s.viewerCount);
-      if (s?.currentSpeaker?.id === uid) {
+
+      // 自分の番になっても、ここでは自動で舞台へは移動しない。
+      // 「タップしてスタート」を押して確認した後（countdown/liveに進んだ時）に移動する。
+      if (
+        s?.currentSpeaker?.id === uid &&
+        (s.status === 'countdown' || s.status === 'live')
+      ) {
         navigation.reset({
           index: 0,
           routes: [{ name: 'StageTab' }],
@@ -23,9 +32,31 @@ export default function WaitingScreen({ route, navigation }) {
     return () => unsub();
   }, []);
 
+  // 確認待ちの残り秒数を表示するためのカウントダウン
+  useEffect(() => {
+    if (!isMyTurnToConfirm || !stage?.currentSpeaker?.confirmDeadline) {
+      setConfirmRemaining(null);
+      return;
+    }
+    const tick = () => {
+      const remaining = Math.max(
+        0,
+        Math.ceil((stage.currentSpeaker.confirmDeadline - Date.now()) / 1000)
+      );
+      setConfirmRemaining(remaining);
+    };
+    tick();
+    const timer = setInterval(tick, 500);
+    return () => clearInterval(timer);
+  }, [isMyTurnToConfirm, stage?.currentSpeaker?.confirmDeadline]);
+
   const handleLeave = async () => {
     await leaveQueue(uid);
     navigation.goBack();
+  };
+
+  const handleConfirm = async () => {
+    await confirmMyTurn();
   };
 
   const queueList = stage?.queue ? Object.values(stage.queue).sort((a, b) => a.joinedAt - b.joinedAt) : [];
@@ -51,21 +82,35 @@ export default function WaitingScreen({ route, navigation }) {
       </View>
 
       <View style={styles.content}>
-        <View style={styles.noticeBox}>
-          <Text style={styles.noticeText}>🔔 もうすぐあなたの番です</Text>
-        </View>
-
-        {nextSpeaker && (
-          <View style={styles.infoBox}>
-            <Text style={styles.infoLabel}>次の発表者</Text>
-            <Text style={styles.infoValue}>{nextSpeaker.heroName}</Text>
+        {isMyTurnToConfirm ? (
+          <View style={styles.confirmBox}>
+            <Text style={styles.confirmTitle}>🎤 あなたの番です！</Text>
+            <Text style={styles.confirmSub}>
+              {confirmRemaining !== null ? `残り${confirmRemaining}秒以内に` : ''}タップしてスタートしてください
+            </Text>
+            <TouchableOpacity style={styles.btnConfirm} onPress={handleConfirm} activeOpacity={0.8}>
+              <Text style={styles.btnConfirmText}>タップしてスタート</Text>
+            </TouchableOpacity>
           </View>
-        )}
+        ) : (
+          <>
+            <View style={styles.noticeBox}>
+              <Text style={styles.noticeText}>🔔 もうすぐあなたの番です</Text>
+            </View>
 
-        <View style={styles.infoBox}>
-          <Text style={styles.infoLabel}>あなたの順番 / 視聴中</Text>
-          <Text style={styles.infoValue}>{myPosition}番目 / {viewerCount}人</Text>
-        </View>
+            {nextSpeaker && (
+              <View style={styles.infoBox}>
+                <Text style={styles.infoLabel}>次の発表者</Text>
+                <Text style={styles.infoValue}>{nextSpeaker.heroName}</Text>
+              </View>
+            )}
+
+            <View style={styles.infoBox}>
+              <Text style={styles.infoLabel}>あなたの順番 / 視聴中</Text>
+              <Text style={styles.infoValue}>{myPosition}番目 / {viewerCount}人</Text>
+            </View>
+          </>
+        )}
 
         <TouchableOpacity style={styles.btnLeave} onPress={handleLeave}>
           <Text style={styles.btnLeaveText}>立候補をキャンセル</Text>
@@ -93,6 +138,11 @@ const styles = StyleSheet.create({
   infoBox:        { backgroundColor: '#1a1a1a', borderWidth: 0.5, borderColor: '#333', borderRadius: 8, padding: 12 },
   infoLabel:      { fontSize: 11, color: '#888', marginBottom: 4 },
   infoValue:      { fontSize: 14, fontWeight: '500', color: '#fff' },
+  confirmBox:     { backgroundColor: 'rgba(107,26,42,0.15)', borderWidth: 1, borderColor: '#6b1a2a', borderRadius: 12, padding: 20, alignItems: 'center', gap: 10 },
+  confirmTitle:   { fontSize: 20, fontWeight: '700', color: '#fff' },
+  confirmSub:     { fontSize: 13, color: '#ddd', textAlign: 'center' },
+  btnConfirm:     { backgroundColor: '#6b1a2a', borderRadius: 8, paddingVertical: 14, paddingHorizontal: 28, marginTop: 8 },
+  btnConfirmText: { fontSize: 16, fontWeight: '700', color: '#fff' },
   btnLeave:       { alignItems: 'center', padding: 12 },
   btnLeaveText:   { fontSize: 13, color: '#888' },
 });

@@ -1,6 +1,6 @@
 // src/services/firebase.js
 import { getApps, initializeApp } from 'firebase/app';
-import { getDatabase, onValue, push, ref, remove, runTransaction, set } from 'firebase/database';
+import { getDatabase, onValue, push, ref, remove, runTransaction, set, update } from 'firebase/database';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCRQwM6gRMGHHIo4KwUNxStV52mEPm56_c",
@@ -70,6 +70,15 @@ export const joinQueue = async (heroName, fcmToken) => {
 
 export const leaveQueue = async (uid) => {
   await remove(ref(db, `stage/queue/${uid}`));
+};
+
+// 「確認待ち」状態の本人が「タップしてスタート」を押した時に呼ぶ。
+// 本番のカウントダウンを開始する実際の時刻(startedAt)は、ここで初めて確定する。
+export const confirmMyTurn = async () => {
+  await update(ref(db), {
+    'stage/status': 'countdown',
+    'stage/currentSpeaker/startedAt': Date.now(),
+  });
 };
 
 // ナイス送信（1セッション1回制限はクライアント側で管理）
