@@ -138,7 +138,7 @@ async function registerWebPush() {
 
     const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
 
-    const { getMessaging, getToken } = await import('firebase/messaging');
+    const { getMessaging, getToken, onMessage } = await import('firebase/messaging');
     const { app } = await import('./src/services/firebase');
     const messaging = getMessaging(app);
 
@@ -147,6 +147,18 @@ async function registerWebPush() {
       serviceWorkerRegistration: registration,
     });
     if (!token) return null;
+
+    // 画面を開いたまま（フォアグラウンド）の時は、Service Workerが動かず
+    // 通知が自動表示されないため、届いたら手動で表示する処理が必要
+    onMessage(messaging, (payload) => {
+      const title = payload.notification?.title || '愚痴HERO';
+      const body = payload.notification?.body || '';
+      try {
+        new Notification(title, { body, icon: '/icons/icon-512.png' });
+      } catch (e) {
+        console.warn('フォアグラウンド通知の表示に失敗しました', e);
+      }
+    });
 
     const db = getDatabase();
     const sessionId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
