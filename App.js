@@ -7,9 +7,11 @@ import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { getDatabase, ref, set } from 'firebase/database';
-import { useEffect } from 'react';
-import { Platform, Text } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { confirmMyTurn, subscribeStage } from './src/services/firebase';
+import { getMyQueueId } from './src/services/myQueueId';
 import { setPushToken } from './src/services/pushToken';
 
 import CountdownScreen from './src/screens/CountdownScreen';
@@ -186,6 +188,62 @@ function StageStack() {
   );
 }
 
+// どの画面（ステージ/壁書き/設定）を見ていても、自分の番になったら
+// 上に浮かび上がって表示される、全画面共通の確認ボタン。
+function GlobalConfirmOverlay() {
+  const [stage, setStage] = useState(null);
+  const [remaining, setRemaining] = useState(null);
+
+  useEffect(() => {
+    const unsub = subscribeStage(setStage);
+    return () => unsub();
+  }, []);
+
+  const isMyTurn = stage?.status === 'confirming' && stage?.currentSpeaker?.id === getMyQueueId();
+
+  useEffect(() => {
+    if (!isMyTurn || !stage?.currentSpeaker?.confirmDeadline) {
+      setRemaining(null);
+      return;
+    }
+    const tick = () => {
+      setRemaining(Math.max(0, Math.ceil((stage.currentSpeaker.confirmDeadline - Date.now()) / 1000)));
+    };
+    tick();
+    const timer = setInterval(tick, 500);
+    return () => clearInterval(timer);
+  }, [isMyTurn, stage?.currentSpeaker?.confirmDeadline]);
+
+  if (!isMyTurn) return null;
+
+  return (
+    <View style={overlayStyles.overlay} pointerEvents="box-none">
+      <View style={overlayStyles.card}>
+        <Text style={overlayStyles.title}>🎤 あなたの番です！</Text>
+        <Text style={overlayStyles.sub}>
+          {remaining !== null ? `残り${remaining}秒以内に` : ''}タップしてスタートしてください
+        </Text>
+        <TouchableOpacity style={overlayStyles.btn} onPress={() => confirmMyTurn()} activeOpacity={0.8}>
+          <Text style={overlayStyles.btnText}>タップしてスタート</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+const overlayStyles = StyleSheet.create({
+  overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', paddingTop: 60, zIndex: 999 },
+  card: {
+    backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#6b1a2a', borderRadius: 12,
+    padding: 20, alignItems: 'center', gap: 10, marginHorizontal: 20,
+    shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 10, elevation: 10,
+  },
+  title:   { fontSize: 18, fontWeight: '700', color: '#fff' },
+  sub:     { fontSize: 13, color: '#ddd', textAlign: 'center' },
+  btn:     { backgroundColor: '#6b1a2a', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 24, marginTop: 4 },
+  btnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+});
+
 export default function App() {
   useEffect(() => {
     injectWebHeightFix();
@@ -238,6 +296,7 @@ export default function App() {
           }}
         />
       </Tab.Navigator>
+      <GlobalConfirmOverlay />
     </NavigationContainer>
   );
 }

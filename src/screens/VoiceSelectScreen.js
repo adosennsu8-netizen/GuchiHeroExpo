@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { Alert, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { joinQueue } from '../services/firebase';
+import { setMyQueueId } from '../services/myQueueId';
 import { getPushToken } from '../services/pushToken';
 
 const VOICE_TYPES = [
@@ -21,6 +22,7 @@ export default function VoiceSelectScreen({ route, navigation }) {
       // これが無いと「もうすぐあなたの番です」という通知が送られる先が存在せず、
       // サーバー側の通知処理自体は正しくても実際には誰にも届かなかった。
       const uid = await joinQueue(heroName, getPushToken());
+      setMyQueueId(uid);
       navigation.replace('Waiting', { heroName, voiceType: selected, uid });
     } catch (e) {
       Alert.alert('エラー', '立候補に失敗しました。もう一度お試しください。');

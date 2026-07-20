@@ -8,7 +8,6 @@ initializeApp();
 const REGION = "asia-southeast1";
 const COUNTDOWN_MS = 4000;
 const LIVE_MS = 60000;
-const INTERMISSION_MS = 15000;
 // 自分の番が来た時、タップして開始するまでの猶予時間。
 // この間に反応が無ければ「不在」とみなし、キューから外して次の人に回す。
 const CONFIRM_MS = 15000;
@@ -207,6 +206,8 @@ exports.onCountdownStart = onValueWritten(
 );
 
 // ③ liveが始まった時：実際の発表開始時刻から60秒後に終了処理をする。
+// 終了したら、幕間の待ち時間を挟まず、その場ですぐ次の人を確認待ちにする
+// （「発表終わりの余韻のタイミングで次の人にボタンを出す」という仕様のため）。
 exports.onLiveStart = onValueWritten(
   { ref: "/stage/status", region: REGION, timeoutSeconds: 90 },
   async (event) => {
@@ -227,63 +228,33 @@ exports.onLiveStart = onValueWritten(
 
     await db.ref(`/stage/queue/${speaker.id}`).remove();
     await db.ref("/comments").remove();
-    await db.ref("/stage").update({ status: "intermission", currentSpeaker: null });
-  }
-);
 
-// ④ intermission（終了後の幕間）が始まった時：15秒後に、次の人がいれば
-// 確認待ち状態にする（いきなり本番のカウントダウンは始めない）。
-exports.onIntermissionStart = onValueWritten(
-  { ref: "/stage/status", region: REGION, timeoutSeconds: 30 },
-  async (event) => {
-    if (event.data.after.val() !== "intermission") return;
-    console.log("[onIntermissionStart] fired");
+    const nextQueue = (await db.ref("/stage/queue").get()).val() || {};
+    const nextList = getWaitingList(nextQueue, null);
 
-    await new Promise((resolve) => setTimeout(resolve, INTERMISSION_MS));
-
-    const db = getDatabase();
-    const currentStatus = (await db.ref("/stage/status").get()).val();
-    console.log("[onIntermissionStart] 待機後のstatus:", currentStatus);
-    if (currentStatus !== "intermission") return;
-
-    const nextSnap = await db.ref("/stage/queue").get();
-    const nextQueue = nextSnap.val() || {};
-    console.log("[onIntermissionStart] 次のqueue件数:", Object.keys(nextQueue).length);
-
-    if (Object.keys(nextQueue).length === 0) {
-      await db.ref("/stage/status").set("idle");
-      console.log("[onIntermissionStart] 次の人がいないのでidleへ");
+    if (nextList.length === 0) {
+      await db.ref("/stage").update({ status: "idle", currentSpeaker: null });
+      console.log("[onLiveStart] 次の人がいないのでidleへ");
       return;
     }
 
-    const nextList = Object.entries(nextQueue).sort((a, b) => a[1].joinedAt - b[1].joinedAt);
     const [nextUid, nextSpeaker] = nextList[0];
-    console.log("[onIntermissionStart] 次のspeaker:", JSON.stringify(nextSpeaker));
+    await enterConfirming(db, nextUid, nextSpeaker);
+    console.log("[onLiveStart] 続けて次の人を確認待ちにした:", nextSpeaker.heroName);
 
-    try {
-      await enterConfirming(db, nextUid, nextSpeaker);
-      console.log("[onIntermissionStart] 確認待ち開始完了");
-
-      // 45秒前の予告に加えて、本当に自分の番になった今このタイミングでも念のため通知する
-      if (nextSpeaker.fcmToken) {
-        await sendToToken(
-          nextSpeaker.fcmToken,
-          "🎤 あなたの番です",
-          "15秒以内にアプリでタップして開始してください"
-        );
-      }
-    } catch (error) {
-      console.error("[onIntermissionStart] currentSpeakerの書き込みでエラー:", error);
-      await db.ref("/stage/status").set("idle");
+    if (nextSpeaker.fcmToken) {
+      await sendToToken(
+        nextSpeaker.fcmToken,
+        "🎤 あなたの番です",
+        "15秒以内にアプリでタップして開始してください"
+      );
     }
   }
 );
 
-// ⑤ 次の人に、本当に自分の登壇が近づいたタイミング（おおよそ登壇45秒前）で予告通知する。
+// ⑤ 次の人に、前の発表者が始まってから30秒経過したタイミングで予告通知する。
 // 「並んだ瞬間」に送っても、その時点ではまだアプリを開いているので意味がない。
-// 一旦アプリを離れた人を、必要なタイミングで呼び戻すための通知。
-// （確認待ちフェーズの長さは本人の反応速度次第で変わるため、最大の待ち時間で見積もった
-// 概算のタイミングになる。早めに届く分には問題ないため、これで十分。）
+// 一旦アプリを離れた人を、早めのタイミングで呼び戻すための予告。
 exports.onNotifyNextSpeaker = onValueWritten(
   { ref: "/stage/status", region: REGION, timeoutSeconds: 90 },
   async (event) => {
@@ -295,10 +266,8 @@ exports.onNotifyNextSpeaker = onValueWritten(
     if (!speaker?.startedAt) return;
 
     const liveStartedAt = speaker.startedAt + COUNTDOWN_MS;
-    // 次の人の本当の登壇時刻（概算）
-    // = 今のliveの終わり + 幕間15秒 + 確認待ち最大15秒 + カウントダウン4秒
-    const nextLiveStart = liveStartedAt + LIVE_MS + INTERMISSION_MS + CONFIRM_MS + COUNTDOWN_MS;
-    const notifyAt = nextLiveStart - 45000;
+    // 前の発表者が始まってから30秒経過したタイミングで予告する
+    const notifyAt = liveStartedAt + 30000;
     const waitMs = Math.max(0, notifyAt - Date.now());
     console.log("[onNotifyNextSpeaker] waitMs:", waitMs);
 
