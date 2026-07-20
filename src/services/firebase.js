@@ -86,3 +86,17 @@ export const sendNice = async (speakerId) => {
   const niceRef = ref(db, `stage/niceCount`);
   await runTransaction(niceRef, (current) => (current || 0) + 1);
 };
+
+// 壁書きの投稿を通報する。3件通報が集まったら、管理者を待たず自動的に削除する。
+const WALL_REPORT_THRESHOLD = 3;
+
+export const reportWallPost = async (postId) => {
+  const reportRef = ref(db, `wall/${postId}/reportCount`);
+  const result = await runTransaction(reportRef, (current) => (current || 0) + 1);
+
+  if (result.committed && (result.snapshot.val() || 0) >= WALL_REPORT_THRESHOLD) {
+    await remove(ref(db, `wall/${postId}`));
+    return { removed: true };
+  }
+  return { removed: false };
+};

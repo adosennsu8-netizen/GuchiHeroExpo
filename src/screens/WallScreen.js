@@ -16,6 +16,7 @@ import {
   View
 } from 'react-native';
 import StagePopup from '../components/StagePopup';
+import { reportWallPost } from '../services/firebase';
 
 const EXPIRE_MS = 30 * 60 * 1000;
 const SPRAY_COLORS = [
@@ -92,10 +93,20 @@ export default function WallScreen({ navigation }) {
     setPosting(false);
   };
 
-  const handleLongPress = () => {
+  const handleLongPress = (postId) => {
     Alert.alert('通報', 'この投稿を通報しますか？', [
       { text: 'キャンセル', style: 'cancel' },
-      { text: '通報する', style: 'destructive', onPress: () => {} },
+      {
+        text: '通報する',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await reportWallPost(postId);
+          } catch (e) {
+            console.warn('通報の送信に失敗しました', e);
+          }
+        },
+      },
     ]);
   };
 
@@ -121,7 +132,7 @@ export default function WallScreen({ navigation }) {
         style={styles.list}
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
-          <TouchableOpacity onLongPress={handleLongPress} activeOpacity={0.8}>
+          <TouchableOpacity onLongPress={() => handleLongPress(item.id)} activeOpacity={0.8}>
             <View style={[styles.post, { transform: [{ rotate: `${item.angle}deg` }] }]}>
               <Text style={[styles.postText, { color: item.color }]}>{item.text}</Text>
               <Text style={styles.expire}>{remainingTime(item.createdAt)}</Text>
