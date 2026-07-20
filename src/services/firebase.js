@@ -59,9 +59,12 @@ export const sendComment = async (text) => {
   await push(ref(db, 'comments'), { text, createdAt: Date.now() });
 };
 
-export const joinQueue = async (heroName) => {
+export const joinQueue = async (heroName, fcmToken) => {
   const uid = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  await set(ref(db, `stage/queue/${uid}`), { heroName, joinedAt: Date.now() });
+  const data = { heroName, joinedAt: Date.now() };
+  // 通知トークンが取得できていれば一緒に保存する（無い場合は通知をスキップするだけで支障はない）
+  if (fcmToken) data.fcmToken = fcmToken;
+  await set(ref(db, `stage/queue/${uid}`), data);
   return uid;
 };
 

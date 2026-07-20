@@ -10,6 +10,8 @@ import { getDatabase, ref, set } from 'firebase/database';
 import { useEffect } from 'react';
 import { Platform, Text } from 'react-native';
 
+import { setPushToken } from './src/services/pushToken';
+
 import CountdownScreen from './src/screens/CountdownScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import StageScreen from './src/screens/StageScreen';
@@ -176,9 +178,9 @@ export default function App() {
   useEffect(() => {
     injectWebHeightFix();
     if (Platform.OS === 'web') {
-      registerWebPush().catch(console.error);
+      registerWebPush().then((token) => setPushToken(token)).catch(console.error);
     } else {
-      registerForPushNotifications().catch(console.error);
+      registerForPushNotifications().then((token) => setPushToken(token)).catch(console.error);
     }
   }, []);
 

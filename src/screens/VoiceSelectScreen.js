@@ -1,7 +1,8 @@
 // src/screens/VoiceSelectScreen.js
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView } from 'react-native';
+import { useState } from 'react';
+import { Alert, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { joinQueue } from '../services/firebase';
+import { getPushToken } from '../services/pushToken';
 
 const VOICE_TYPES = [
   { id: 'robot', label: 'ロボット',   desc: '機械的な声に変換' },
@@ -16,7 +17,10 @@ export default function VoiceSelectScreen({ route, navigation }) {
 
   const handleJoin = async () => {
     try {
-      const uid = await joinQueue(heroName);
+      // 立候補する時点で自分の通知トークンも一緒に保存しておく。
+      // これが無いと「もうすぐあなたの番です」という通知が送られる先が存在せず、
+      // サーバー側の通知処理自体は正しくても実際には誰にも届かなかった。
+      const uid = await joinQueue(heroName, getPushToken());
       navigation.replace('Waiting', { heroName, voiceType: selected, uid });
     } catch (e) {
       Alert.alert('エラー', '立候補に失敗しました。もう一度お試しください。');
