@@ -94,6 +94,15 @@ export default function WallScreen({ navigation }) {
   };
 
   const handleLongPress = (postId) => {
+    // React NativeのAlert.alertはWeb版で正しく表示されないことがあるため、
+    // Web版だけブラウザ標準のconfirmダイアログを使う
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm('この投稿を通報しますか？')) {
+        reportWallPost(postId).catch((e) => console.warn('通報の送信に失敗しました', e));
+      }
+      return;
+    }
+
     Alert.alert('通報', 'この投稿を通報しますか？', [
       { text: 'キャンセル', style: 'cancel' },
       {
