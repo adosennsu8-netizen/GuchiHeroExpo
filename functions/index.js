@@ -1,7 +1,10 @@
 const { onValueWritten } = require("firebase-functions/v2/database");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
 const { getDatabase } = require("firebase-admin/database");
 const { getMessaging } = require("firebase-admin/messaging");
+const { AccessToken } = require("livekit-server-sdk");
 
 initializeApp();
 
@@ -11,6 +14,14 @@ const LIVE_MS = 60000;
 // 自分の番が来た時、タップして開始するまでの猶予時間。
 // この間に反応が無ければ「不在」とみなし、キューから外して次の人に回す。
 const CONFIRM_MS = 15000;
+
+// ステージは常に1つしか存在しないため、LiveKitのルーム名は固定にする
+const STAGE_ROOM = "guchihero-stage";
+
+// LiveKit接続用シークレット(firebase functions:secrets:setで登録済み)
+const LIVEKIT_API_KEY = defineSecret("LIVEKIT_API_KEY");
+const LIVEKIT_API_SECRET = defineSecret("LIVEKIT_API_SECRET");
+const LIVEKIT_URL = defineSecret("LIVEKIT_URL");
 
 // 全FCMトークンに通知を送る
 async function sendToAll(title, body) {
@@ -290,5 +301,73 @@ exports.onNotifyNextSpeaker = onValueWritten(
         await sendToToken(nextSpeaker.fcmToken, "🎤 もうすぐあなたの番です", "まもなくステージへ上がります！");
       }
     }
+  }
+);
+
+// ⑥ LiveKit接続用トークンを発行する。
+// 発表者(publisher)の権限は、クライアントの自己申告だけでは絶対に渡さない。
+// 「今この瞬間、本当にこのuidが発表者として認められているか」をFirebase側の
+// /stage/currentSpeaker と突き合わせてから発行することで、なりすまし配信を防ぐ。
+exports.getLiveKitToken = onCall(
+  {
+    region: REGION,
+    secrets: [LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_URL],
+  },
+  async (request) => {
+    const { role, uid } = request.data || {};
+
+    if (role !== "speaker" && role !== "listener") {
+      throw new HttpsError("invalid-argument", "roleはspeakerかlistenerを指定してください");
+    }
+
+    const db = getDatabase();
+
+    if (role === "speaker") {
+      if (!uid) {
+        throw new HttpsError("invalid-argument", "uidが必要です");
+      }
+
+      const stageSnap = await db.ref("/stage").get();
+      const stage = stageSnap.val() || {};
+      const isCurrentSpeaker =
+        stage.currentSpeaker?.id === uid &&
+        (stage.status === "countdown" || stage.status === "live");
+
+      if (!isCurrentSpeaker) {
+        console.warn("[getLiveKitToken] 発表者として認められないリクエスト. uid:", uid, "status:", stage.status);
+        throw new HttpsError("permission-denied", "現在の発表者として認められませんでした");
+      }
+
+      const at = new AccessToken(LIVEKIT_API_KEY.value(), LIVEKIT_API_SECRET.value(), {
+        identity: `speaker_${uid}`,
+        ttl: "10m",
+      });
+      at.addGrant({
+        room: STAGE_ROOM,
+        roomJoin: true,
+        canPublish: true,
+        canSubscribe: false,
+      });
+
+      const token = await at.toJwt();
+      console.log("[getLiveKitToken] 発表者トークン発行. uid:", uid);
+      return { token, url: LIVEKIT_URL.value(), room: STAGE_ROOM };
+    }
+
+    // role === "listener"：視聴専用。誰でも発行してよい（送信権限は持たせない）
+    const identity = `listener_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const at = new AccessToken(LIVEKIT_API_KEY.value(), LIVEKIT_API_SECRET.value(), {
+      identity,
+      ttl: "1h",
+    });
+    at.addGrant({
+      room: STAGE_ROOM,
+      roomJoin: true,
+      canPublish: false,
+      canSubscribe: true,
+    });
+
+    const token = await at.toJwt();
+    return { token, url: LIVEKIT_URL.value(), room: STAGE_ROOM };
   }
 );

@@ -18,6 +18,8 @@ import NicePanel from '../components/NicePanel';
 import QuickComments from '../components/QuickComments';
 import { generateHeroName, sendComment, sendNice, subscribeComments, subscribeStage } from '../services/firebase';
 import { getGhostViewerCount, startGhostComments } from '../services/ghostAudience';
+import { connectAsSpeaker, connectAsListener, disconnectAudio } from '../services/liveAudio';
+import { getMyQueueId } from '../services/myQueueId';
 
 const stageImageSource = require('../../assets/stage.png');
 // Web版：ImageBackgroundのresizeMode="cover"がRN Web上では中央基準にならず
@@ -56,6 +58,10 @@ export default function StageScreen({ navigation }) {
   const countScale = useRef(new Animated.Value(1)).current;
   const ghostStopRef = useRef(null);
   const prevSpeakerRef = useRef(null);
+  // 現在接続中のLiveKitルーム（発表者としてマイク配信中、または視聴者として音声受信中）
+  const audioRoomRef = useRef(null);
+  // 接続処理が二重に走らないようにするためのロック
+  const audioConnectingRef = useRef(false);
 
   useEffect(() => {
     const unsubStage = subscribeStage((data) => {
@@ -131,6 +137,57 @@ export default function StageScreen({ navigation }) {
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
   }, [stageStatus, currentSpeaker?.startedAt]);
+
+  // 音声接続の管理。
+  // countdown/liveの間だけLiveKitに接続し、それ以外（end/idle/confirming）では必ず切断する。
+  // 自分がcurrentSpeakerと一致すれば発表者（マイク配信）、そうでなければ視聴者（音声受信のみ）として繋ぐ。
+  useEffect(() => {
+    const shouldConnect = stageStatus === 'countdown' || stageStatus === 'live';
+
+    if (!shouldConnect) {
+      if (audioRoomRef.current) {
+        const room = audioRoomRef.current;
+        audioRoomRef.current = null;
+        disconnectAudio(room);
+      }
+      return;
+    }
+
+    if (audioRoomRef.current || audioConnectingRef.current) return;
+
+    const myUid = getMyQueueId();
+    const iAmSpeaker = !!(myUid && currentSpeaker?.id === myUid);
+
+    audioConnectingRef.current = true;
+    const connectPromise = iAmSpeaker ? connectAsSpeaker(myUid) : connectAsListener();
+
+    connectPromise
+      .then((room) => {
+        audioConnectingRef.current = false;
+        // 接続完了までの間に状態が変わってしまっていたら、繋いだ直後でも切断する
+        if (!room) return;
+        const stillShouldConnect = stageStatus === 'countdown' || stageStatus === 'live';
+        if (!stillShouldConnect) {
+          disconnectAudio(room);
+          return;
+        }
+        audioRoomRef.current = room;
+      })
+      .catch((e) => {
+        audioConnectingRef.current = false;
+        console.error('[liveAudio] 接続に失敗しました', e);
+      });
+  }, [stageStatus, currentSpeaker?.id]);
+
+  // 画面自体が閉じられた場合の後始末
+  useEffect(() => {
+    return () => {
+      if (audioRoomRef.current) {
+        disconnectAudio(audioRoomRef.current);
+        audioRoomRef.current = null;
+      }
+    };
+  }, []);
 
   const handleNice = async () => {
     if (nicedThisSession) return;
