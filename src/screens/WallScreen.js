@@ -132,12 +132,17 @@ export default function WallScreen({ navigation }) {
         style={styles.list}
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
-          <TouchableOpacity onLongPress={() => handleLongPress(item.id)} activeOpacity={0.8}>
+          <View>
             <View style={[styles.post, { transform: [{ rotate: `${item.angle}deg` }] }]}>
               <Text style={[styles.postText, { color: item.color }]}>{item.text}</Text>
-              <Text style={styles.expire}>{remainingTime(item.createdAt)}</Text>
+              <View style={styles.postFooter}>
+                <Text style={styles.expire}>{remainingTime(item.createdAt)}</Text>
+                <TouchableOpacity onPress={() => handleLongPress(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={styles.reportBtn}>🚩 通報</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </TouchableOpacity>
+          </View>
         )}
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -218,7 +223,9 @@ const styles = StyleSheet.create({
   // gap指定を廃止し、marginBottomで各投稿間の間隔をどの環境でも確実に効かせる
   post:            { backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 4, padding: 12, borderLeftWidth: 2, borderLeftColor: 'rgba(255,255,255,0.2)', marginBottom: 20 },
   postText:        { fontSize: 15, fontWeight: '700', lineHeight: 22, fontStyle: 'italic' },
-  expire:          { fontSize: 10, color: '#555', marginTop: 6 },
+  postFooter:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
+  expire:          { fontSize: 10, color: '#555' },
+  reportBtn:       { fontSize: 11, color: '#888' },
   empty:           { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
   emptyText:       { fontSize: 14, color: '#555', textAlign: 'center', lineHeight: 24 },
   inputWrap:       { padding: 12, borderTopWidth: 0.5, borderTopColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(0,0,0,0.7)' },
