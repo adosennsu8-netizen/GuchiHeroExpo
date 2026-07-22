@@ -11,20 +11,19 @@ initializeApp();
 const REGION = "asia-southeast1";
 const COUNTDOWN_MS = 4000;
 const LIVE_MS = 60000;
-// 自分の番が来た時、タップして開始するまでの猶予時間。
-// この間に反応が無ければ「不在」とみなし、キューから外して次の人に回す。
 const CONFIRM_MS = 15000;
 
-// ステージは常に1つしか存在しないため、LiveKitのルーム名は固定にする
 const STAGE_ROOM = "guchihero-stage";
 
-// LiveKit接続用シークレット(firebase functions:secrets:setで登録済み)
 const LIVEKIT_API_KEY = defineSecret("LIVEKIT_API_KEY");
 const LIVEKIT_API_SECRET = defineSecret("LIVEKIT_API_SECRET");
 const LIVEKIT_URL = defineSecret("LIVEKIT_URL");
 
-// 全FCMトークンに通知を送る
-async function sendToAll(title, body) {
+// 全FCMトークンに通知を送る。
+// tagを指定することで、オフライン中に何度も発火した場合でも
+// 端末側では常に最新の1件だけが表示される（tag無しだと、溜まった分が
+// 再接続時にまとめて全件表示されてしまう）。
+async function sendToAll(title, body, tag) {
   const db = getDatabase();
   const snap = await db.ref("/fcmTokens").get();
   const tokens = snap.val();
@@ -43,30 +42,30 @@ async function sendToAll(title, body) {
     await messaging.sendEachForMulticast({
       tokens: chunk,
       notification: { title, body },
-      android: { priority: "high" },
+      android: { priority: "high", collapseKey: tag, notification: { tag } },
+      apns: { headers: { "apns-collapse-id": tag } },
     }).catch(console.error);
   }
 }
 
-// 特定トークンに通知を送る
-async function sendToToken(token, title, body) {
+// 特定トークンに通知を送る（同上、tagで重複表示を防ぐ）
+async function sendToToken(token, title, body, tag) {
   if (!token) return;
   const messaging = getMessaging();
   await messaging.send({
     token,
     notification: { title, body },
-    android: { priority: "high" },
+    android: { priority: "high", collapseKey: tag, notification: { tag } },
+    apns: { headers: { "apns-collapse-id": tag } },
   }).catch(console.error);
 }
 
-// 待機列の中から、指定したID以外で一番先頭の人を返す
 function getWaitingList(queue, excludeId) {
   return Object.entries(queue || {})
     .filter(([id]) => id !== excludeId)
     .sort((a, b) => a[1].joinedAt - b[1].joinedAt);
 }
 
-// 誰かを「確認待ち」状態にする（まだ本番のカウントダウンは始めない）
 async function enterConfirming(db, uid, speaker) {
   await db.ref("/stage").update({
     status: "confirming",
@@ -79,9 +78,6 @@ async function enterConfirming(db, uid, speaker) {
   });
 }
 
-// ① キューに変化があった時：アイドル中であれば「確認待ち」を開始する。
-// トランザクションで「idleである場合のみ書き換える」ことを保証するため、
-// 複数の実行が同時に発生しても二重にステージが始まることはない。
 exports.onQueueChange = onValueWritten(
   { ref: "/stage/queue", region: REGION, timeoutSeconds: 30 },
   async (event) => {
@@ -89,7 +85,7 @@ exports.onQueueChange = onValueWritten(
 
     const statusResult = await db.ref("/stage/status").transaction((current) => {
       if (current === "idle" || current === null) return "confirming";
-      return; // idle以外の時は何もしない（他のフェーズが進行中）
+      return;
     });
     console.log(
       "[onQueueChange] transaction committed:", statusResult.committed,
@@ -114,7 +110,7 @@ exports.onQueueChange = onValueWritten(
 
     const prevQueue = event.data.before.val() || {};
     if (Object.keys(prevQueue).length === 0) {
-      await sendToAll("🎭 ステージが始まるぞ！", "愚痴ヒーローが舞台に上がろうとしている");
+      await sendToAll("🎭 ステージが始まるぞ！", "愚痴ヒーローが舞台に上がろうとしている", "stage-start");
     }
 
     try {
@@ -127,9 +123,6 @@ exports.onQueueChange = onValueWritten(
   }
 );
 
-// ②' 確認待ちが始まった時：15秒以内にタップ（countdownへの切り替え）が
-// 無ければ「不在」とみなし、キューから外して次の人を確認待ちにする。
-// 次の人には「予告」ではなく「今すぐタップしてください」という即時通知を送る。
 exports.onConfirmingStart = onValueWritten(
   { ref: "/stage/status", region: REGION, timeoutSeconds: 30 },
   async (event) => {
@@ -148,7 +141,6 @@ exports.onConfirmingStart = onValueWritten(
     const currentSnap = await db.ref("/stage").get();
     const current = currentSnap.val() || {};
 
-    // 待っている間にタップされて次のフェーズ（countdown）に進んでいれば何もしない
     if (current.status !== "confirming" || current.currentSpeaker?.id !== speaker.id) {
       console.log("[onConfirmingStart] 既に反応済み、または状況が変わっていたため終了");
       return;
@@ -169,19 +161,17 @@ exports.onConfirmingStart = onValueWritten(
     const [nextUid, nextSpeaker] = nextList[0];
     await enterConfirming(db, nextUid, nextSpeaker);
 
-    // スキップによる繰り上がりは予告する時間が無いため、即時通知に切り替える
     if (nextSpeaker.fcmToken) {
       await sendToToken(
         nextSpeaker.fcmToken,
         "🎤 今、あなたの番です",
-        "15秒以内にアプリでタップして開始してください"
+        "15秒以内にアプリでタップして開始してください",
+        "your-turn"
       );
     }
   }
 );
 
-// ② カウントダウンが始まった時：実際の開始時刻から4秒後にliveへ切り替える。
-// startedAtは、本人がアプリ上で「タップしてスタート」を押した瞬間にクライアント側で書き込まれる。
 exports.onCountdownStart = onValueWritten(
   { ref: "/stage/status", region: REGION, timeoutSeconds: 30 },
   async (event) => {
@@ -216,9 +206,6 @@ exports.onCountdownStart = onValueWritten(
   }
 );
 
-// ③ liveが始まった時：実際の発表開始時刻から60秒後に終了処理をする。
-// 終了したら、幕間の待ち時間を挟まず、その場ですぐ次の人を確認待ちにする
-// （「発表終わりの余韻のタイミングで次の人にボタンを出す」という仕様のため）。
 exports.onLiveStart = onValueWritten(
   { ref: "/stage/status", region: REGION, timeoutSeconds: 90 },
   async (event) => {
@@ -257,15 +244,13 @@ exports.onLiveStart = onValueWritten(
       await sendToToken(
         nextSpeaker.fcmToken,
         "🎤 あなたの番です",
-        "15秒以内にアプリでタップして開始してください"
+        "15秒以内にアプリでタップして開始してください",
+        "your-turn"
       );
     }
   }
 );
 
-// ⑤ 次の人に、前の発表者が始まってから30秒経過したタイミングで予告通知する。
-// 「並んだ瞬間」に送っても、その時点ではまだアプリを開いているので意味がない。
-// 一旦アプリを離れた人を、早めのタイミングで呼び戻すための予告。
 exports.onNotifyNextSpeaker = onValueWritten(
   { ref: "/stage/status", region: REGION, timeoutSeconds: 90 },
   async (event) => {
@@ -277,7 +262,6 @@ exports.onNotifyNextSpeaker = onValueWritten(
     if (!speaker?.startedAt) return;
 
     const liveStartedAt = speaker.startedAt + COUNTDOWN_MS;
-    // 前の発表者が始まってから30秒経過したタイミングで予告する
     const notifyAt = liveStartedAt + 30000;
     const waitMs = Math.max(0, notifyAt - Date.now());
     console.log("[onNotifyNextSpeaker] waitMs:", waitMs);
@@ -298,16 +282,17 @@ exports.onNotifyNextSpeaker = onValueWritten(
       const [, nextSpeaker] = waitingList[0];
       console.log("[onNotifyNextSpeaker] 通知対象:", nextSpeaker.heroName);
       if (nextSpeaker.fcmToken) {
-        await sendToToken(nextSpeaker.fcmToken, "🎤 もうすぐあなたの番です", "まもなくステージへ上がります！");
+        await sendToToken(
+          nextSpeaker.fcmToken,
+          "🎤 もうすぐあなたの番です",
+          "まもなくステージへ上がります！",
+          "coming-up"
+        );
       }
     }
   }
 );
 
-// ⑥ LiveKit接続用トークンを発行する。
-// 発表者(publisher)の権限は、クライアントの自己申告だけでは絶対に渡さない。
-// 「今この瞬間、本当にこのuidが発表者として認められているか」をFirebase側の
-// /stage/currentSpeaker と突き合わせてから発行することで、なりすまし配信を防ぐ。
 exports.getLiveKitToken = onCall(
   {
     region: REGION,
@@ -354,7 +339,6 @@ exports.getLiveKitToken = onCall(
       return { token, url: LIVEKIT_URL.value(), room: STAGE_ROOM };
     }
 
-    // role === "listener"：視聴専用。誰でも発行してよい（送信権限は持たせない）
     const identity = `listener_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const at = new AccessToken(LIVEKIT_API_KEY.value(), LIVEKIT_API_SECRET.value(), {
       identity,

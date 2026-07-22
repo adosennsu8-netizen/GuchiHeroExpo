@@ -1,24 +1,25 @@
 // src/services/liveAudio.js
-// LiveKitを使った1対多の音声配信（発表者 → 視聴者）。
-// livekit-clientはブラウザのWebRTC APIに依存するため、Web版でのみ動作する。
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Platform } from 'react-native';
 import { app } from './firebase';
+import { getCachedMicStream, requestMicPermission } from './micStream';
 
-// Firebase Functionsはasia-southeast1にデプロイしているため、クライアント側もリージョンを合わせる
 const functions = getFunctions(app, 'asia-southeast1');
 const getLiveKitTokenFn = httpsCallable(functions, 'getLiveKitToken');
 
-// livekit-clientはブラウザ専用のためWeb以外では読み込まない（ネイティブ環境での起動エラーを防ぐ）
 let Room = null;
 let RoomEvent = null;
+let Track = null;
 if (Platform.OS === 'web') {
   const livekit = require('livekit-client');
   Room = livekit.Room;
   RoomEvent = livekit.RoomEvent;
+  Track = livekit.Track;
 }
 
-// リモート（相手）の音声トラックを実際にブラウザで再生するための<audio>要素を管理する
+// 現状は「ピッチ高め」のみ対応。声色を増やす際はここに分岐を追加する。
+const PITCH_RATIO = 1.4;
+
 const audioElements = new Map();
 
 function attachRemoteAudio(track, participantIdentity) {
@@ -30,29 +31,44 @@ function attachRemoteAudio(track, participantIdentity) {
 }
 
 function detachAllAudio() {
-  for (const el of audioElements.values()) {
-    el.remove();
-  }
+  for (const el of audioElements.values()) el.remove();
   audioElements.clear();
 }
 
 function setupListenerEvents(room) {
   room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
-    if (track.kind === 'audio') {
-      attachRemoteAudio(track, participant.identity);
-    }
+    if (track.kind === 'audio') attachRemoteAudio(track, participant.identity);
   });
   room.on(RoomEvent.TrackUnsubscribed, (_track, _publication, participant) => {
     const el = audioElements.get(participant.identity);
-    if (el) {
-      el.remove();
-      audioElements.delete(participant.identity);
-    }
+    if (el) { el.remove(); audioElements.delete(participant.identity); }
   });
 }
 
-// 発表者として接続し、マイクを配信する。
-// uidは/stage/currentSpeaker.idと一致している必要があり、サーバー側(getLiveKitToken)で検証される。
+// マイク → ピッチシフト(AudioWorklet) → 変換後トラック、という音声処理チェーンを組み立てる
+async function buildPitchShiftedTrack() {
+  const micStream = getCachedMicStream() || (await requestMicPermission());
+
+  const audioContext = new AudioContext();
+  // ユーザー操作から離れたタイミングでAudioContextが生成されるとsuspendedのまま
+  // 無音になることがあるため、明示的にresumeしておく(Androidで音が出ない事例の対策)
+  if (audioContext.state === 'suspended') {
+    await audioContext.resume();
+  }
+
+  await audioContext.audioWorklet.addModule('/pitch-processor.js');
+
+  const sourceNode = audioContext.createMediaStreamSource(micStream);
+  const pitchNode = new AudioWorkletNode(audioContext, 'pitch-shift-processor');
+  pitchNode.port.postMessage({ pitchRatio: PITCH_RATIO });
+  const destNode = audioContext.createMediaStreamDestination();
+
+  sourceNode.connect(pitchNode).connect(destNode);
+
+  const processedTrack = destNode.stream.getAudioTracks()[0];
+  return { processedTrack, audioContext, sourceNode, pitchNode, destNode };
+}
+
 export async function connectAsSpeaker(uid) {
   if (Platform.OS !== 'web' || !Room) {
     console.warn('[liveAudio] Web以外では音声配信は未対応です');
@@ -62,12 +78,20 @@ export async function connectAsSpeaker(uid) {
   const { data } = await getLiveKitTokenFn({ role: 'speaker', uid });
   const room = new Room();
   await room.connect(data.url, data.token);
-  await room.localParticipant.setMicrophoneEnabled(true);
-  console.log('[liveAudio] 発表者としてLiveKitに接続、マイク配信開始');
+
+  const chain = await buildPitchShiftedTrack();
+  await room.localParticipant.publishTrack(chain.processedTrack, {
+    source: Track?.Source?.Microphone,
+    name: 'microphone',
+  });
+
+  // disconnectAudio側で音声処理チェーンも一緒に片付けられるよう、roomに持たせておく
+  room.__pitchChain = chain;
+
+  console.log('[liveAudio] 発表者としてLiveKitに接続、ピッチシフト後の音声を配信開始');
   return room;
 }
 
-// 視聴者として接続し、発表者の音声を再生する
 export async function connectAsListener() {
   if (Platform.OS !== 'web' || !Room) {
     console.warn('[liveAudio] Web以外では音声視聴は未対応です');
@@ -82,11 +106,20 @@ export async function connectAsListener() {
   return room;
 }
 
-// 切断（発表者・視聴者共通）
 export async function disconnectAudio(room) {
   if (!room) return;
   try {
     detachAllAudio();
+
+    if (room.__pitchChain) {
+      const { audioContext, sourceNode, pitchNode, destNode } = room.__pitchChain;
+      try { sourceNode.disconnect(); } catch (_e) {}
+      try { pitchNode.disconnect(); } catch (_e) {}
+      try { destNode.disconnect(); } catch (_e) {}
+      try { await audioContext.close(); } catch (_e) {}
+      room.__pitchChain = null;
+    }
+
     await room.disconnect();
     console.log('[liveAudio] LiveKitから切断');
   } catch (e) {
