@@ -20,40 +20,88 @@ const LIVEKIT_API_KEY = defineSecret("LIVEKIT_API_KEY");
 const LIVEKIT_API_SECRET = defineSecret("LIVEKIT_API_SECRET");
 const LIVEKIT_URL = defineSecret("LIVEKIT_URL");
 
+// 全FCMトークンに通知を送る。tagで重複表示を防ぎ、送信結果から
+// 無効化されたトークンを特定して/fcmTokensから削除する。
 async function sendToAll(title, body, tag) {
   const db = getDatabase();
   const snap = await db.ref("/fcmTokens").get();
-  const tokens = snap.val();
-  if (!tokens) return;
+  const tokensObj = snap.val();
+  if (!tokensObj) return;
 
-  const tokenList = Object.values(tokens).map(t => t.token).filter(Boolean);
-  if (tokenList.length === 0) return;
+  const entries = Object.entries(tokensObj)
+    .map(([key, v]) => ({ key, token: v?.token }))
+    .filter((e) => e.token);
+  if (entries.length === 0) return;
 
   const messaging = getMessaging();
-  const chunks = [];
-  for (let i = 0; i < tokenList.length; i += 500) {
-    chunks.push(tokenList.slice(i, i + 500));
-  }
+  const chunkSize = 500;
 
-  for (const chunk of chunks) {
-    await messaging.sendEachForMulticast({
-      tokens: chunk,
+  for (let i = 0; i < entries.length; i += chunkSize) {
+    const chunk = entries.slice(i, i + chunkSize);
+    const tokenList = chunk.map((e) => e.token);
+
+    const response = await messaging.sendEachForMulticast({
+      tokens: tokenList,
       notification: { title, body },
       android: { priority: "high", collapseKey: tag, notification: { tag } },
       apns: { headers: { "apns-collapse-id": tag } },
-    }).catch(console.error);
+    }).catch((error) => {
+      console.error("[sendToAll] 送信全体でエラー:", error);
+      return null;
+    });
+
+    if (!response) continue;
+
+    const removals = [];
+    response.responses.forEach((r, idx) => {
+      if (r.success) return;
+      const code = r.error?.code;
+      const isInvalid =
+        code === "messaging/registration-token-not-registered" ||
+        code === "messaging/invalid-registration-token" ||
+        code === "messaging/invalid-argument";
+      if (isInvalid) {
+        const key = chunk[idx].key;
+        console.log("[sendToAll] 無効トークンを削除:", key, code);
+        removals.push(db.ref(`/fcmTokens/${key}`).remove());
+      }
+    });
+    await Promise.all(removals);
   }
 }
 
+// 特定トークンに通知を送る（同上、tagで重複表示を防ぐ）。
+// 送信失敗が無効トークンを示すエラーだった場合、該当エントリを削除する。
 async function sendToToken(token, title, body, tag) {
   if (!token) return;
   const messaging = getMessaging();
-  await messaging.send({
-    token,
-    notification: { title, body },
-    android: { priority: "high", collapseKey: tag, notification: { tag } },
-    apns: { headers: { "apns-collapse-id": tag } },
-  }).catch(console.error);
+
+  try {
+    await messaging.send({
+      token,
+      notification: { title, body },
+      android: { priority: "high", collapseKey: tag, notification: { tag } },
+      apns: { headers: { "apns-collapse-id": tag } },
+    });
+  } catch (error) {
+    console.error("[sendToToken] 送信エラー:", error);
+    const code = error?.code;
+    const isInvalid =
+      code === "messaging/registration-token-not-registered" ||
+      code === "messaging/invalid-registration-token" ||
+      code === "messaging/invalid-argument";
+
+    if (isInvalid) {
+      const db = getDatabase();
+      const snap = await db.ref("/fcmTokens").get();
+      const tokensObj = snap.val() || {};
+      const matchKey = Object.entries(tokensObj).find(([, v]) => v?.token === token)?.[0];
+      if (matchKey) {
+        console.log("[sendToToken] 無効トークンを削除:", matchKey, code);
+        await db.ref(`/fcmTokens/${matchKey}`).remove();
+      }
+    }
+  }
 }
 
 function getWaitingList(queue, excludeId) {
@@ -352,13 +400,12 @@ exports.getLiveKitToken = onCall(
   }
 );
 
-// ⑦ コメント書き込みを監視し、NGワードが含まれていれば即座に削除する。
-// クライアント側のチェックは回避され得るため、これが最終防衛ラインになる。
+// コメント書き込みを監視し、NGワードが含まれていれば即座に削除する。
 exports.onCommentWritten = onValueWritten(
   { ref: "/comments/{commentId}", region: REGION, timeoutSeconds: 10 },
   async (event) => {
     const after = event.data.after.val();
-    if (!after) return; // 削除イベントは無視
+    if (!after) return;
 
     if (containsNgWord(after.text)) {
       console.log("[onCommentWritten] NGワード検知、削除します:", after.text);
@@ -367,12 +414,12 @@ exports.onCommentWritten = onValueWritten(
   }
 );
 
-// ⑧ 壁書き投稿を監視し、NGワードが含まれていれば即座に削除する。
+// 壁書き投稿を監視し、NGワードが含まれていれば即座に削除する。
 exports.onWallPostWritten = onValueWritten(
   { ref: "/wall/{postId}", region: REGION, timeoutSeconds: 10 },
   async (event) => {
     const after = event.data.after.val();
-    if (!after) return; // 削除イベントは無視
+    if (!after) return;
 
     if (containsNgWord(after.text)) {
       console.log("[onWallPostWritten] NGワード検知、削除します:", after.text);
