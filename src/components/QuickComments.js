@@ -1,26 +1,46 @@
 // src/components/QuickComments.js
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 const QUICK = ['👏 拍手', '共感', 'かなしい', 'がんばれ', 'すごい'];
 
+// Web版はAlert.alertが正しく表示されないため、window.alertに切り替える
+// (壁書きの通報確認をwindow.confirmに切り替えた時と同じ理由)
+function showAlert(title, message) {
+  if (Platform.OS === 'web') {
+    window.alert(`${title}\n${message}`);
+  } else {
+    Alert.alert(title, message);
+  }
+}
+
 export default function QuickComments({ onSend }) {
   const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
 
-  const handleSend = (msg) => {
-    if (!msg.trim()) return;
-    onSend(msg.trim());
-    setText('');
+  const handleSend = async (msg) => {
+    if (!msg.trim() || sending) return;
+    setSending(true);
+    try {
+      await onSend(msg.trim());
+      setText('');
+    } catch (e) {
+      if (e?.code === 'NG_WORD_DETECTED') {
+        showAlert('送信できません', '不適切な内容が含まれている可能性があります。表現を変えてもう一度お試しください。');
+      } else {
+        showAlert('エラー', 'コメントの送信に失敗しました。もう一度お試しください。');
+      }
+    } finally {
+      setSending(false);
+    }
   };
 
-  // 改行文字が紛れ込んだ場合（貼り付け等）は空白に置き換えて除去
   const handleChangeText = (t) => {
     setText(t.replace(/[\r\n]+/g, ' '));
   };
 
   return (
     <View style={styles.wrap}>
-      {/* 既定コメントボタン */}
       <View style={styles.quickRow}>
         {QUICK.map(q => (
           <TouchableOpacity key={q} style={styles.quickBtn} onPress={() => handleSend(q)} activeOpacity={0.7}>
@@ -29,7 +49,6 @@ export default function QuickComments({ onSend }) {
         ))}
       </View>
 
-      {/* テキスト入力 */}
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}

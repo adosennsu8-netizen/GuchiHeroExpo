@@ -1,21 +1,21 @@
 // src/services/firebase.js
 import { getApps, initializeApp } from 'firebase/app';
 import { getDatabase, onValue, push, ref, remove, runTransaction, set, update } from 'firebase/database';
+import { containsNgWord } from './ngWordFilter';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCRQwM6gRMGHHIo4KwUNxStV52mEPm56_c",
-authDomain: "guchihero-ea8f7.firebaseapp.com",
-databaseURL: "https://guchihero-ea8f7-default-rtdb.asia-southeast1.firebasedatabase.app",
-projectId: "guchihero-ea8f7",
-storageBucket: "guchihero-ea8f7.firebasestorage.app",
-messagingSenderId: "602629666937",
-appId: "1:602629666937:web:ea821f8f9cbf276af27ca8"
+  authDomain: "guchihero-ea8f7.firebaseapp.com",
+  databaseURL: "https://guchihero-ea8f7-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "guchihero-ea8f7",
+  storageBucket: "guchihero-ea8f7.firebasestorage.app",
+  messagingSenderId: "602629666937",
+  appId: "1:602629666937:web:ea821f8f9cbf276af27ca8"
 };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const db = getDatabase(app);
 
-// Web Push通知（App.js側）で、同じ初期化済みappを再利用するために公開する
 export { app };
 
 export const generateHeroName = () => {
@@ -28,12 +28,10 @@ export const subscribeStage = (callback) => {
   return onValue(stageRef, (snap) => callback(snap.val()));
 };
 
-// コメントは10分以上経過したらDBから削除（壁書きと同様、クライアント側で掃除する方式）
 const COMMENT_EXPIRE_MS = 10 * 60 * 1000;
 
 export const subscribeComments = (callback) => {
   const commentsRef = ref(db, 'comments');
-  // 購読開始より前のコメントは表示しない（リロード時に過去分が一斉に流れるのを防ぐ）
   const startTime = Date.now();
   return onValue(commentsRef, (snap) => {
     const data = snap.val();
@@ -46,7 +44,6 @@ export const subscribeComments = (callback) => {
       .slice(-50);
     callback(list);
 
-    // 古いコメントをDBから削除
     Object.entries(data).forEach(([id, v]) => {
       if (now - v.createdAt >= COMMENT_EXPIRE_MS) {
         remove(ref(db, `comments/${id}`));
@@ -55,14 +52,21 @@ export const subscribeComments = (callback) => {
   });
 };
 
+// NGワードを含む場合は送信自体を行わず、呼び出し元にエラーを投げる。
+// こっそり握りつぶすと「送信したはずなのに反映されない」と混乱するため、
+// 呼び出し元(QuickComments)でエラーを受けて理由をユーザーに伝える想定。
 export const sendComment = async (text) => {
+  if (containsNgWord(text)) {
+    const error = new Error('NG_WORD_DETECTED');
+    error.code = 'NG_WORD_DETECTED';
+    throw error;
+  }
   await push(ref(db, 'comments'), { text, createdAt: Date.now() });
 };
 
 export const joinQueue = async (heroName, fcmToken) => {
   const uid = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const data = { heroName, joinedAt: Date.now() };
-  // 通知トークンが取得できていれば一緒に保存する（無い場合は通知をスキップするだけで支障はない）
   if (fcmToken) data.fcmToken = fcmToken;
   await set(ref(db, `stage/queue/${uid}`), data);
   return uid;
@@ -72,8 +76,6 @@ export const leaveQueue = async (uid) => {
   await remove(ref(db, `stage/queue/${uid}`));
 };
 
-// 「確認待ち」状態の本人が「タップしてスタート」を押した時に呼ぶ。
-// 本番のカウントダウンを開始する実際の時刻(startedAt)は、ここで初めて確定する。
 export const confirmMyTurn = async () => {
   await update(ref(db), {
     'stage/status': 'countdown',
@@ -81,13 +83,11 @@ export const confirmMyTurn = async () => {
   });
 };
 
-// ナイス送信（1セッション1回制限はクライアント側で管理）
 export const sendNice = async (speakerId) => {
   const niceRef = ref(db, `stage/niceCount`);
   await runTransaction(niceRef, (current) => (current || 0) + 1);
 };
 
-// 壁書きの投稿を通報する。3件通報が集まったら、管理者を待たず自動的に削除する。
 const WALL_REPORT_THRESHOLD = 3;
 
 export const reportWallPost = async (postId) => {
