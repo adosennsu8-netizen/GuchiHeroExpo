@@ -1,24 +1,25 @@
 // src/screens/SettingsScreen.js
 import { Linking, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-const ROWS = [
-  {
-    section: 'アプリについて',
-    items: [
-      { label: '使い方',             sub: '愚痴HEROの基本的な使い方', onPress: () => {} },
-      { label: 'プライバシーポリシー', sub: '声データの取り扱いについて', onPress: () => Linking.openURL('https://guchihero-legal.vercel.app/privacy.html') },
-      { label: '利用規約', sub: null, onPress: () => Linking.openURL('https://guchihero-legal.vercel.app/terms.html') },
-    ],
-  },
-  {
-    section: 'サポート',
-    items: [
-      { label: 'お問い合わせ',              sub: null, onPress: () => Linking.openURL('mailto:support@guchihero.app') },
-      { label: '不適切なコンテンツを報告', sub: null, onPress: () => {} },
-    ],
-  },
-];
 
-export default function SettingsScreen() {
+export default function SettingsScreen({ navigation }) {
+  const ROWS = [
+    {
+      section: 'アプリについて',
+      items: [
+        { label: '使い方', sub: '愚痴HEROの基本的な使い方', onPress: () => navigation.navigate('HowTo') },
+        { label: 'プライバシーポリシー', sub: '声データの取り扱いについて', onPress: () => Linking.openURL('https://guchihero-legal.vercel.app/privacy.html') },
+        { label: '利用規約', sub: null, onPress: () => Linking.openURL('https://guchihero-legal.vercel.app/terms.html') },
+      ],
+    },
+    {
+      section: 'サポート',
+      items: [
+        { label: 'お問い合わせ', sub: null, onPress: () => Linking.openURL('mailto:support@guchihero.app') },
+        { label: '不適切なコンテンツを報告', sub: null, onPress: () => Linking.openURL('mailto:support@guchihero.app?subject=不適切なコンテンツの報告') },
+      ],
+    },
+  ];
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>

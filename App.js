@@ -15,6 +15,7 @@ import { getMyQueueId } from './src/services/myQueueId';
 import { setPushToken } from './src/services/pushToken';
 
 import CountdownScreen from './src/screens/CountdownScreen';
+import HowToScreen from './src/screens/HowToScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import StageScreen from './src/screens/StageScreen';
 import VoiceSelectScreen from './src/screens/VoiceSelectScreen';
@@ -187,6 +188,14 @@ function StageStack() {
     </Stack.Navigator>
   );
 }
+function SettingsStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Main"   component={SettingsScreen} />
+      <Stack.Screen name="HowTo"  component={HowToScreen} />
+    </Stack.Navigator>
+  );
+}
 
 // どの画面（ステージ/壁書き/設定）を見ていても、自分の番になったら
 // 上に浮かび上がって表示される、全画面共通の確認ボタン。
@@ -289,12 +298,12 @@ export default function App() {
         />
         <Tab.Screen
           name="Settings"
-          component={SettingsScreen}
+          component={SettingsStack}
           options={{
             tabBarLabel: '設定',
             tabBarIcon: ({ color }) => <Text style={{ fontSize: Platform.OS === 'web' ? 15 : 20, color }}>⚙️</Text>,
-          }}
-        />
+  }}
+/>
       </Tab.Navigator>
       <GlobalConfirmOverlay />
     </NavigationContainer>
