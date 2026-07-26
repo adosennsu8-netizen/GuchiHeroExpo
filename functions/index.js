@@ -20,10 +20,6 @@ const LIVEKIT_API_KEY = defineSecret("LIVEKIT_API_KEY");
 const LIVEKIT_API_SECRET = defineSecret("LIVEKIT_API_SECRET");
 const LIVEKIT_URL = defineSecret("LIVEKIT_URL");
 
-// 全FCMトークンに通知を送る。
-// tagを指定することで、オフライン中に何度も発火した場合でも
-// 端末側では常に最新の1件だけが表示される（tag無しだと、溜まった分が
-// 再接続時にまとめて全件表示されてしまう）。
 async function sendToAll(title, body, tag) {
   const db = getDatabase();
   const snap = await db.ref("/fcmTokens").get();
@@ -49,7 +45,6 @@ async function sendToAll(title, body, tag) {
   }
 }
 
-// 特定トークンに通知を送る（同上、tagで重複表示を防ぐ）
 async function sendToToken(token, title, body, tag) {
   if (!token) return;
   const messaging = getMessaging();
@@ -356,10 +351,6 @@ exports.getLiveKitToken = onCall(
     return { token, url: LIVEKIT_URL.value(), room: STAGE_ROOM };
   }
 );
-const token = await at.toJwt();
-    return { token, url: LIVEKIT_URL.value(), room: STAGE_ROOM };
-  }
-);
 
 // ⑦ コメント書き込みを監視し、NGワードが含まれていれば即座に削除する。
 // クライアント側のチェックは回避され得るため、これが最終防衛ラインになる。
@@ -375,6 +366,7 @@ exports.onCommentWritten = onValueWritten(
     }
   }
 );
+
 // ⑧ 壁書き投稿を監視し、NGワードが含まれていれば即座に削除する。
 exports.onWallPostWritten = onValueWritten(
   { ref: "/wall/{postId}", region: REGION, timeoutSeconds: 10 },
