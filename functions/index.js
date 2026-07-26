@@ -5,6 +5,7 @@ const { initializeApp } = require("firebase-admin/app");
 const { getDatabase } = require("firebase-admin/database");
 const { getMessaging } = require("firebase-admin/messaging");
 const { AccessToken } = require("livekit-server-sdk");
+const { containsNgWord } = require("./ngWordFilter");
 
 initializeApp();
 
@@ -353,5 +354,24 @@ exports.getLiveKitToken = onCall(
 
     const token = await at.toJwt();
     return { token, url: LIVEKIT_URL.value(), room: STAGE_ROOM };
+  }
+);
+const token = await at.toJwt();
+    return { token, url: LIVEKIT_URL.value(), room: STAGE_ROOM };
+  }
+);
+
+// ⑦ コメント書き込みを監視し、NGワードが含まれていれば即座に削除する。
+// クライアント側のチェックは回避され得るため、これが最終防衛ラインになる。
+exports.onCommentWritten = onValueWritten(
+  { ref: "/comments/{commentId}", region: REGION, timeoutSeconds: 10 },
+  async (event) => {
+    const after = event.data.after.val();
+    if (!after) return; // 削除イベントは無視
+
+    if (containsNgWord(after.text)) {
+      console.log("[onCommentWritten] NGワード検知、削除します:", after.text);
+      await event.data.after.ref.remove();
+    }
   }
 );
