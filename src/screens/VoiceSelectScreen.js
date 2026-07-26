@@ -1,4 +1,3 @@
-// src/screens/VoiceSelectScreen.js
 import { useState } from 'react';
 import { Alert, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { joinQueue } from '../services/firebase';
@@ -6,8 +5,6 @@ import { requestMicPermission } from '../services/micStream';
 import { setMyQueueId } from '../services/myQueueId';
 import { getPushToken } from '../services/pushToken';
 
-// 現状は「ピッチ高め」のみ対応。ロボット/ピッチ低め/エコーは、
-// これの動作確認が取れてから順次追加する。
 const VOICE_TYPE = { id: 'high', label: 'ピッチ高め', desc: '高めのトーンに変換されます' };
 
 export default function VoiceSelectScreen({ route, navigation }) {
@@ -19,9 +16,6 @@ export default function VoiceSelectScreen({ route, navigation }) {
     setJoining(true);
 
     try {
-      // 立候補ボタンを押したこの瞬間にマイク許可を先に取っておく。
-      // 発表開始のタイミングで初めて許可を求めると、許可待ちの間に
-      // カウントダウンや発表時間が進んでしまうため、ここで済ませる。
       if (Platform.OS === 'web') {
         try {
           await requestMicPermission();

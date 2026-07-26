@@ -1,5 +1,3 @@
-// src/services/micStream.js
-// 立候補ボタンを押した瞬間にマイク許可を先取りし、発表開始まで使い回すためのモジュール。
 let cachedStream = null;
 let requestPromise = null;
 

@@ -1,4 +1,3 @@
-// src/services/liveAudio.js
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Platform } from 'react-native';
 import { app } from './firebase';
@@ -17,7 +16,6 @@ if (Platform.OS === 'web') {
   Track = livekit.Track;
 }
 
-// 現状は「ピッチ高め」のみ対応。声色を増やす際はここに分岐を追加する。
 const PITCH_RATIO = 1.4;
 
 const audioElements = new Map();
@@ -45,13 +43,10 @@ function setupListenerEvents(room) {
   });
 }
 
-// マイク → ピッチシフト(AudioWorklet) → 変換後トラック、という音声処理チェーンを組み立てる
 async function buildPitchShiftedTrack() {
   const micStream = getCachedMicStream() || (await requestMicPermission());
 
   const audioContext = new AudioContext();
-  // ユーザー操作から離れたタイミングでAudioContextが生成されるとsuspendedのまま
-  // 無音になることがあるため、明示的にresumeしておく(Androidで音が出ない事例の対策)
   if (audioContext.state === 'suspended') {
     await audioContext.resume();
   }
@@ -85,7 +80,6 @@ export async function connectAsSpeaker(uid) {
     name: 'microphone',
   });
 
-  // disconnectAudio側で音声処理チェーンも一緒に片付けられるよう、roomに持たせておく
   room.__pitchChain = chain;
 
   console.log('[liveAudio] 発表者としてLiveKitに接続、ピッチシフト後の音声を配信開始');

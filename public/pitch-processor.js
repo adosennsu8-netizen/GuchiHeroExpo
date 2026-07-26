@@ -1,14 +1,7 @@
-// public/pitch-processor.js
-// リアルタイムのグレイン方式ピッチシフター。
-// マイク入力をリングバッファに溜め、書き込みは1サンプルずつ・読み取りは
-// pitchRatio倍の速さで進めることで、再生速度を変えずにピッチだけを変化させる。
-// 読み取り位置がグレインの端で折り返す瞬間のプツプツ音を消すため、
-// 半周期ずらした2つのグレインをハン窓でクロスフェードしている。
-
 class PitchShiftProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.pitchRatio = 1.4; // 1.0=変化なし、1.4=ピッチ高め
+    this.pitchRatio = 1.4;
     this.grainSize = 4096;
     this.bufferSize = this.grainSize * 4;
     this.ringBuffer = new Float32Array(this.bufferSize);
