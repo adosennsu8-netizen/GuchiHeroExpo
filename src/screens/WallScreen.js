@@ -1,5 +1,5 @@
 // src/screens/WallScreen.js
-import { getDatabase, onValue, push, ref, remove } from 'firebase/database';
+import { getDatabase, onValue, ref, remove } from 'firebase/database';
 import { useEffect, useState } from 'react';
 import {
   Alert,
@@ -16,7 +16,7 @@ import {
   View
 } from 'react-native';
 import StagePopup from '../components/StagePopup';
-import { reportWallPost } from '../services/firebase';
+import { postToWall, reportWallPost } from '../services/firebase';
 
 const EXPIRE_MS = 30 * 60 * 1000;
 const SPRAY_COLORS = [
@@ -25,11 +25,9 @@ const SPRAY_COLORS = [
 ];
 
 const getRandomColor = () => SPRAY_COLORS[Math.floor(Math.random() * SPRAY_COLORS.length)];
-// Web版のgap未対応環境でも重なりが目立たないよう、傾きをやや控えめに（±3度）
 const getRandomAngle = () => (Math.random() - 0.5) * 6;
 
 const wallImageSource = require('../../assets/wall.png');
-// Web版：ImageBackgroundのresizeMode="cover"が中央基準にならない問題への対処（ステージ画面と同様）
 function resolveWallImageUriWeb() {
   if (Platform.OS !== 'web') return null;
   try {
@@ -45,6 +43,15 @@ function resolveWallImageUriWeb() {
   }
 }
 const wallImageUriWeb = resolveWallImageUriWeb();
+
+// Web版はAlert.alertが正しく表示されないため、window.alertに切り替える
+function showAlert(title, message) {
+  if (Platform.OS === 'web') {
+    window.alert(`${title}\n${message}`);
+  } else {
+    Alert.alert(title, message);
+  }
+}
 
 export default function WallScreen({ navigation }) {
   const [posts, setPosts] = useState([]);
@@ -83,19 +90,21 @@ export default function WallScreen({ navigation }) {
   const handlePost = async () => {
     if (!text.trim() || posting) return;
     setPosting(true);
-    await push(ref(db, 'wall'), {
-      text: text.trim(),
-      color: getRandomColor(),
-      angle: getRandomAngle(),
-      createdAt: Date.now(),
-    });
-    setText('');
-    setPosting(false);
+    try {
+      await postToWall(text.trim(), getRandomColor(), getRandomAngle());
+      setText('');
+    } catch (e) {
+      if (e?.code === 'NG_WORD_DETECTED') {
+        showAlert('投稿できません', '不適切な内容が含まれている可能性があります。表現を変えてもう一度お試しください。');
+      } else {
+        showAlert('エラー', '投稿に失敗しました。もう一度お試しください。');
+      }
+    } finally {
+      setPosting(false);
+    }
   };
 
   const handleLongPress = (postId) => {
-    // React NativeのAlert.alertはWeb版で正しく表示されないことがあるため、
-    // Web版だけブラウザ標準のconfirmダイアログを使う
     if (Platform.OS === 'web') {
       if (typeof window !== 'undefined' && window.confirm('この投稿を通報しますか？')) {
         reportWallPost(postId).catch((e) => console.warn('通報の送信に失敗しました', e));
@@ -227,9 +236,7 @@ const styles = StyleSheet.create({
   title:           { fontSize: 20, fontWeight: '700', color: '#fff', letterSpacing: 2 },
   subtitle:        { fontSize: 11, color: '#888', marginTop: 2 },
   list:            { flex: 1 },
-  // gapはWeb環境で効かない場合があるため、間隔はpost側のmarginBottomで確実に確保する
   listContent:     { padding: 14, paddingBottom: 24 },
-  // gap指定を廃止し、marginBottomで各投稿間の間隔をどの環境でも確実に効かせる
   post:            { backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 4, padding: 12, borderLeftWidth: 2, borderLeftColor: 'rgba(255,255,255,0.2)', marginBottom: 20 },
   postText:        { fontSize: 15, fontWeight: '700', lineHeight: 22, fontStyle: 'italic' },
   postFooter:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },

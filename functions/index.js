@@ -375,3 +375,16 @@ exports.onCommentWritten = onValueWritten(
     }
   }
 );
+// ⑧ 壁書き投稿を監視し、NGワードが含まれていれば即座に削除する。
+exports.onWallPostWritten = onValueWritten(
+  { ref: "/wall/{postId}", region: REGION, timeoutSeconds: 10 },
+  async (event) => {
+    const after = event.data.after.val();
+    if (!after) return; // 削除イベントは無視
+
+    if (containsNgWord(after.text)) {
+      console.log("[onWallPostWritten] NGワード検知、削除します:", after.text);
+      await event.data.after.ref.remove();
+    }
+  }
+);

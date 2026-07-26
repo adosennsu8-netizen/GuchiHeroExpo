@@ -52,9 +52,6 @@ export const subscribeComments = (callback) => {
   });
 };
 
-// NGワードを含む場合は送信自体を行わず、呼び出し元にエラーを投げる。
-// こっそり握りつぶすと「送信したはずなのに反映されない」と混乱するため、
-// 呼び出し元(QuickComments)でエラーを受けて理由をユーザーに伝える想定。
 export const sendComment = async (text) => {
   if (containsNgWord(text)) {
     const error = new Error('NG_WORD_DETECTED');
@@ -99,4 +96,14 @@ export const reportWallPost = async (postId) => {
     return { removed: true };
   }
   return { removed: false };
+};
+
+// 壁書きへの投稿。sendCommentと同じ方針でNGワードを事前に弾く。
+export const postToWall = async (text, color, angle) => {
+  if (containsNgWord(text)) {
+    const error = new Error('NG_WORD_DETECTED');
+    error.code = 'NG_WORD_DETECTED';
+    throw error;
+  }
+  await push(ref(db, 'wall'), { text, color, angle, createdAt: Date.now() });
 };
