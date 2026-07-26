@@ -99,6 +99,14 @@ function injectWebHeightFix() {
     appleTouchIcon.href = '/icons/icon-512.png';
     document.head.appendChild(appleTouchIcon);
   }
+  // AdSenseのサイト所有権確認・広告配信に必要なスクリプト
+  if (!document.querySelector('script[src*="adsbygoogle.js"]')) {
+    const adsenseScript = document.createElement('script');
+    adsenseScript.async = true;
+    adsenseScript.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2919662383586718';
+    adsenseScript.crossOrigin = 'anonymous';
+    document.head.appendChild(adsenseScript);
+  }
 }
 
 async function registerForPushNotifications() {
