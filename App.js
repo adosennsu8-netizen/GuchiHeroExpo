@@ -125,12 +125,12 @@ async function registerForPushNotifications() {
   const token = (await Notifications.getExpoPushTokenAsync()).data;
 
   const db = getDatabase();
-  const sessionId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  await set(ref(db, `fcmTokens/${sessionId}`), {
+  const tokenKey = token.replace(/[.#$/\[\]]/g, '_');
+  await set(ref(db, `fcmTokens/${tokenKey}`), {
     token,
     platform: Platform.OS,
     createdAt: Date.now(),
-  });
+});
 
   return token;
 }
@@ -172,12 +172,12 @@ async function registerWebPush() {
     });
 
     const db = getDatabase();
-    const sessionId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    await set(ref(db, `fcmTokens/${sessionId}`), {
+    const tokenKey = token.replace(/[.#$/\[\]]/g, '_');
+    await set(ref(db, `fcmTokens/${tokenKey}`), {
       token,
       platform: 'web',
       createdAt: Date.now(),
-    });
+});
 
     return token;
   } catch (error) {
