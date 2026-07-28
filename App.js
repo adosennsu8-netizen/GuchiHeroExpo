@@ -272,7 +272,7 @@ export default function App() {
   }, []);
 
   return (
-    <NavigationContainer>
+    <NavigationContainer documentTitle={{ formatter: () => '愚痴HERO' }}>
       <StatusBar style="light" />
       <Tab.Navigator
         screenOptions={{
