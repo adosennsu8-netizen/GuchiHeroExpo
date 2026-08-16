@@ -157,6 +157,26 @@ img { max-width: 100%; display: block; }
   text-decoration: none;
 }
 
+.badge-row {
+  list-style: none;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 28px 0 0;
+  padding: 0;
+}
+
+.badge-row li {
+  font-family: var(--font-ticket);
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 16px;
+}
+
 /* ---------- Section shell ---------- */
 section { padding: 72px 0; }
 
