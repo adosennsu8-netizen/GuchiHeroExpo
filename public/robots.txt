@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://guchi-hero-expo.vercel.app/sitemap.xml
